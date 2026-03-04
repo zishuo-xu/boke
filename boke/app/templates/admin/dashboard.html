@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block title %}后台看板{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>后台管理</h2>
+  <div>
+    <a class="btn btn-primary" href="{{ url_for('admin.post_new') }}">新建文章</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.posts') }}">文章管理</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.categories') }}">分类管理</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.tags') }}">标签管理</a>
+  </div>
+</div>
+<div class="row g-3 mb-4">
+  <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted">文章总数</div><div class="display-6">{{ stats.post_total }}</div></div></div></div>
+  <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted">分类总数</div><div class="display-6">{{ stats.category_total }}</div></div></div></div>
+  <div class="col-md-4"><div class="card"><div class="card-body"><div class="text-muted">标签总数</div><div class="display-6">{{ stats.tag_total }}</div></div></div></div>
+</div>
+<div class="card">
+  <div class="card-header">最新文章</div>
+  <ul class="list-group list-group-flush">
+    {% for post in latest_posts %}
+    <li class="list-group-item d-flex justify-content-between">
+      <a href="{{ url_for('admin.post_edit', post_id=post.id) }}">{{ post.title }}</a>
+      <span class="badge {% if post.status == 1 %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ '已发布' if post.status == 1 else '草稿' }}</span>
+    </li>
+    {% else %}
+    <li class="list-group-item text-muted">暂无数据</li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

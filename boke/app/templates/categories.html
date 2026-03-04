@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}分类 - 学习博客{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <main class="col-lg-8">
+    <h2 class="mb-3">全部分类</h2>
+    <div class="list-group">
+      {% for category, count in category_stats %}
+      <a class="list-group-item list-group-item-action d-flex justify-content-between" href="{{ url_for('public.category_posts', category_id=category.id) }}">
+        {{ category.name }}
+        <span class="badge text-bg-secondary">{{ count }}</span>
+      </a>
+      {% else %}
+      <div class="list-group-item text-muted">暂无分类</div>
+      {% endfor %}
+    </div>
+  </main>
+  <aside class="col-lg-4">
+    <div class="card mb-3"><div class="card-header">最新文章</div><div class="list-group list-group-flush">
+      {% for p in latest_posts %}<a class="list-group-item" href="{{ url_for('public.post_detail', post_id=p.id) }}">{{ p.title }}</a>{% endfor %}
+    </div></div>
+  </aside>
+</div>
+{% endblock %}

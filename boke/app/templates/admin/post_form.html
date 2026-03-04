@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}{{ '编辑文章' if post else '新建文章' }}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/editor.md@1.5.0/css/editormd.min.css">
+{% endblock %}
+{% block content %}
+<h2 class="mb-3">{{ '编辑文章' if post else '新建文章' }}</h2>
+<form method="post">
+  <div class="row g-3">
+    <div class="col-md-8">
+      <label class="form-label">标题</label>
+      <input class="form-control" name="title" value="{{ post.title if post else '' }}" required>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">状态</label>
+      <select class="form-select" name="status">
+        <option value="0" {% if post and post.status == 0 %}selected{% endif %}>草稿</option>
+        <option value="1" {% if post and post.status == 1 %}selected{% endif %}>发布</option>
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">分类</label>
+      <select class="form-select" name="category_id">
+        <option value="">未分类</option>
+        {% for category in categories %}
+        <option value="{{ category.id }}" {% if post and post.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-6">
+      <label class="form-label">标签（英文逗号分隔）</label>
+      <input class="form-control" name="tags" value="{{ raw_tags if raw_tags else '' }}">
+    </div>
+    <div class="col-12">
+      <label class="form-label">摘要（留空自动生成）</label>
+      <textarea class="form-control" rows="2" name="summary">{{ post.summary if post else '' }}</textarea>
+    </div>
+    <div class="col-12">
+      <label class="form-label">Markdown内容</label>
+      <div id="post-editor">
+        <textarea style="display:none;" name="content" required>{{ post.content if post else '' }}</textarea>
+      </div>
+    </div>
+  </div>
+  <div class="mt-3">
+    <button class="btn btn-primary" type="submit">保存</button>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.posts') }}">返回</a>
+  </div>
+</form>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/editor.md@1.5.0/editormd.min.js"></script>
+<script src="{{ url_for('static', filename='js/admin_editor.js') }}"></script>
+{% endblock %}

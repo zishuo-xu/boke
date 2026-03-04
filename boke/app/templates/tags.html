@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}标签 - 学习博客{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <main class="col-lg-8">
+    <h2 class="mb-3">标签云</h2>
+    <div class="card"><div class="card-body tag-cloud">
+      {% for tag, count in tag_stats %}
+      {% set weight = 0.9 + (count / max_count) * 1.2 %}
+      <a class="tag-item" href="{{ url_for('public.tag_posts', tag_id=tag.id) }}" style="font-size: {{ '%.2f'|format(weight) }}rem;">{{ tag.name }}({{ count }})</a>
+      {% else %}
+      <span class="text-muted">暂无标签</span>
+      {% endfor %}
+    </div></div>
+  </main>
+  <aside class="col-lg-4">
+    <div class="card"><div class="card-header">分类统计</div><ul class="list-group list-group-flush">
+      {% for category, count in category_stats %}
+      <li class="list-group-item d-flex justify-content-between"><span>{{ category.name }}</span><span class="badge text-bg-secondary">{{ count }}</span></li>
+      {% endfor %}
+    </ul></div>
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,36 @@
+body {
+  background: #f5f6f8;
+}
+
+a {
+  text-decoration: none;
+}
+
+.tag-cloud {
+  line-height: 2;
+}
+
+.tag-item {
+  margin-right: 0.5rem;
+}
+
+.sticky-toc {
+  position: sticky;
+  top: 84px;
+}
+
+.toc ul {
+  padding-left: 1rem;
+}
+
+.markdown-body img {
+  max-width: 100%;
+  height: auto;
+}
+
+.markdown-body pre {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+}

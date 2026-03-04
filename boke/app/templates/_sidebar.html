@@ -1,0 +1,35 @@
+<div class="card mb-3">
+  <div class="card-header">最新文章</div>
+  <div class="list-group list-group-flush">
+    {% for p in latest_posts %}
+    <a class="list-group-item list-group-item-action" href="{{ url_for('public.post_detail', post_id=p.id) }}">{{ p.title }}</a>
+    {% else %}
+    <div class="list-group-item text-muted">暂无文章</div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header">分类统计</div>
+  <ul class="list-group list-group-flush">
+    {% for category, count in category_stats %}
+    <li class="list-group-item d-flex justify-content-between align-items-center">
+      <a href="{{ url_for('public.category_posts', category_id=category.id) }}">{{ category.name }}</a>
+      <span class="badge text-bg-secondary">{{ count }}</span>
+    </li>
+    {% else %}
+    <li class="list-group-item text-muted">暂无分类</li>
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="card">
+  <div class="card-header">标签云</div>
+  <div class="card-body tag-cloud">
+    {% for tag, count in tag_stats %}
+    <a href="{{ url_for('public.tag_posts', tag_id=tag.id) }}" class="tag-item" style="font-size: {{ 0.8 + count * 0.15 }}rem;">{{ tag.name }}</a>
+    {% else %}
+    <span class="text-muted">暂无标签</span>
+    {% endfor %}
+  </div>
+</div>

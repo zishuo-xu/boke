@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}分类管理{% endblock %}
+{% block content %}
+<h2 class="mb-3">分类管理</h2>
+<div class="row g-4">
+  <div class="col-md-4">
+    <div class="card"><div class="card-body">
+      <form method="post">
+        <div class="mb-2"><label class="form-label">分类名</label><input class="form-control" name="name" required></div>
+        <div class="mb-2"><label class="form-label">排序</label><input class="form-control" type="number" name="sort" value="0"></div>
+        <button class="btn btn-primary w-100">新增分类</button>
+      </form>
+    </div></div>
+  </div>
+  <div class="col-md-8">
+    <table class="table table-striped">
+      <thead><tr><th>ID</th><th>名称</th><th>排序</th><th>操作</th></tr></thead>
+      <tbody>
+      {% for c in categories %}
+      <tr>
+        <td>{{ c.id }}</td><td>{{ c.name }}</td><td>{{ c.sort }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin.category_delete', category_id=c.id) }}" onsubmit="return confirm('确认删除该分类？')">
+            <button class="btn btn-sm btn-outline-danger">删除</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
