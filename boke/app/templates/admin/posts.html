@@ -1,12 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}文章管理{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between mb-3">
-  <h2>文章管理</h2>
+<div class="d-flex justify-content-between mb-3 page-headline">
+  <h2 class="mb-0">文章管理</h2>
   <a class="btn btn-primary" href="{{ url_for('admin.post_new') }}">新建文章</a>
 </div>
-<div class="table-responsive">
-<table class="table table-striped align-middle">
+<div class="card table-card">
+<div class="card-body table-responsive">
+<table class="table table-striped align-middle mb-0">
   <thead><tr><th>ID</th><th>标题</th><th>分类</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead>
   <tbody>
     {% for post in posts %}
@@ -26,6 +27,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 </div>
 {% if pagination.pages > 1 %}
 <nav><ul class="pagination">

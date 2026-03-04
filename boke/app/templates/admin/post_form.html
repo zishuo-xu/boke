@@ -4,7 +4,12 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/editor.md@1.5.0/css/editormd.min.css">
 {% endblock %}
 {% block content %}
-<h2 class="mb-3">{{ '编辑文章' if post else '新建文章' }}</h2>
+<div class="d-flex justify-content-between align-items-center mb-3 page-headline">
+  <h2 class="mb-0">{{ '编辑文章' if post else '新建文章' }}</h2>
+  <a class="btn btn-outline-secondary" href="{{ url_for('admin.posts') }}">返回列表</a>
+</div>
+<div class="card form-card">
+<div class="card-body">
 <form method="post">
   <div class="row g-3">
     <div class="col-md-8">
@@ -47,6 +52,8 @@
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.posts') }}">返回</a>
   </div>
 </form>
+</div>
+</div>
 {% endblock %}
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>

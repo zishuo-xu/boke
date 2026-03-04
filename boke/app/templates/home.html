@@ -3,9 +3,14 @@
 {% block content %}
 <div class="row g-4">
   <main class="col-lg-8">
-    <h2 class="mb-3">{{ list_title or '最新文章' }}</h2>
+    <div class="d-flex justify-content-between align-items-center mb-3 page-headline">
+      <h2 class="mb-0">{{ list_title or '最新文章' }}</h2>
+      {% if current_user.is_authenticated %}
+      <a class="btn btn-success btn-sm" href="{{ url_for('admin.post_new') }}">新增文章</a>
+      {% endif %}
+    </div>
     {% for post in posts %}
-    <article class="card mb-3">
+    <article class="card mb-3 post-card">
       <div class="card-body">
         <h3 class="h5"><a href="{{ url_for('public.post_detail', post_id=post.id) }}">{{ post.title }}</a></h3>
         <p class="text-muted small mb-2">

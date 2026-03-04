@@ -1,10 +1,12 @@
 {% extends 'base.html' %}
 {% block title %}分类管理{% endblock %}
 {% block content %}
-<h2 class="mb-3">分类管理</h2>
+<div class="page-headline mb-3">
+  <h2 class="mb-0">分类管理</h2>
+</div>
 <div class="row g-4">
   <div class="col-md-4">
-    <div class="card"><div class="card-body">
+    <div class="card form-card"><div class="card-body">
       <form method="post">
         <div class="mb-2"><label class="form-label">分类名</label><input class="form-control" name="name" required></div>
         <div class="mb-2"><label class="form-label">排序</label><input class="form-control" type="number" name="sort" value="0"></div>
@@ -13,7 +15,8 @@
     </div></div>
   </div>
   <div class="col-md-8">
-    <table class="table table-striped">
+    <div class="card table-card"><div class="card-body table-responsive">
+    <table class="table table-striped mb-0">
       <thead><tr><th>ID</th><th>名称</th><th>排序</th><th>操作</th></tr></thead>
       <tbody>
       {% for c in categories %}
@@ -28,6 +31,7 @@
       {% endfor %}
       </tbody>
     </table>
+    </div></div>
   </div>
 </div>
 {% endblock %}

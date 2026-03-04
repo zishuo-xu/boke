@@ -1,17 +1,19 @@
 {% extends 'base.html' %}
 {% block title %}标签管理{% endblock %}
 {% block content %}
-<h2 class="mb-3">标签管理</h2>
+<div class="page-headline mb-3">
+  <h2 class="mb-0">标签管理</h2>
+</div>
 <div class="row g-4">
   <div class="col-md-4">
-    <div class="card mb-3"><div class="card-body">
+    <div class="card mb-3 form-card"><div class="card-body">
       <form method="post" action="{{ url_for('admin.tags') }}">
         <div class="mb-2"><label class="form-label">标签名</label><input class="form-control" name="name" required></div>
         <button class="btn btn-primary w-100">新增标签</button>
       </form>
     </div></div>
 
-    <div class="card">
+    <div class="card form-card">
       <div class="card-header">标签合并</div>
       <div class="card-body">
         <form method="post" action="{{ url_for('admin.tags_merge') }}">
@@ -29,7 +31,8 @@
 
   <div class="col-md-8">
     <form method="post" action="{{ url_for('admin.tags_delete_batch') }}" onsubmit="return confirm('确认批量删除选中标签？')">
-      <table class="table table-striped">
+      <div class="card table-card"><div class="card-body table-responsive">
+      <table class="table table-striped mb-3">
         <thead><tr><th><input type="checkbox" onclick="document.querySelectorAll('input[name=tag_ids]').forEach(i=>i.checked=this.checked)"></th><th>ID</th><th>名称</th></tr></thead>
         <tbody>
         {% for t in tags %}
@@ -38,6 +41,7 @@
         </tbody>
       </table>
       <button class="btn btn-outline-danger">批量删除</button>
+      </div></div>
     </form>
   </div>
 </div>

@@ -3,7 +3,9 @@
 {% block content %}
 <div class="row g-4">
   <main class="col-lg-8">
-    <h2 class="mb-3">标签云</h2>
+    <div class="page-headline mb-3">
+      <h2 class="mb-0">标签云</h2>
+    </div>
     <div class="card"><div class="card-body tag-cloud">
       {% for tag, count in tag_stats %}
       {% set weight = 0.9 + (count / max_count) * 1.2 %}
