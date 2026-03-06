@@ -1,9 +1,10 @@
+from flask import Blueprint, abort, current_app, render_template, request
 from sqlalchemy import func, or_
-from flask import Blueprint, abort, render_template, request
 from flask_login import current_user
 
 from .extensions import db
 from .models import Category, Post, Tag
+from .permissions import is_admin_user
 from .utils import highlight_keyword, match_score, render_markdown
 
 public_bp = Blueprint("public", __name__)
@@ -59,7 +60,9 @@ def home():
 @public_bp.route("/post/<int:post_id>")
 def post_detail(post_id: int):
     post = Post.query.get_or_404(post_id)
-    if not post.is_published and not current_user.is_authenticated:
+    if not post.is_published and not is_admin_user(
+        current_user, current_app.config.get("ADMIN_USERNAMES", {"admin"})
+    ):
         abort(404)
 
     post.view_count += 1

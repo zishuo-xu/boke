@@ -5,7 +5,7 @@
   <main class="col-lg-8">
     <div class="d-flex justify-content-between align-items-center mb-3 page-headline">
       <h2 class="mb-0">{{ list_title or '最新文章' }}</h2>
-      {% if current_user.is_authenticated %}
+      {% if is_admin_user %}
       <a class="btn btn-success btn-sm" href="{{ url_for('admin.post_new') }}">新增文章</a>
       {% endif %}
     </div>

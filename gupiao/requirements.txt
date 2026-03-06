@@ -1,0 +1,25 @@
+# FastAPI 和服务器
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+python-multipart==0.0.20
+
+# 数据库
+sqlalchemy==2.0.36
+
+# 认证和安全
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-dotenv==1.0.1
+
+# 数据获取
+akshare
+
+# 数据处理
+pandas
+numpy
+
+# 定时任务
+apscheduler==3.11.0
+
+# 数据验证
+pydantic-settings==2.6.1

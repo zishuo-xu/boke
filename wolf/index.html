@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AI机器人狼人杀观察台</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-badge">AI</div>
+          <div>
+            <h1>狼人杀观测站</h1>
+            <p>AI自主博弈 · 操作与思考可视化</p>
+          </div>
+        </div>
+
+        <div class="game-meta">
+          <div class="stage-card">
+            <span>当前阶段</span>
+            <strong id="current-phase">未开始</strong>
+          </div>
+          <div class="round-card">
+            <span>回合</span>
+            <strong id="current-round">0</strong>
+          </div>
+          <div class="round-card">
+            <span>状态</span>
+            <strong id="game-status">待机</strong>
+          </div>
+        </div>
+
+        <div class="controls">
+          <label>
+            人数
+            <select id="player-count"></select>
+          </label>
+          <label>
+            速度
+            <select id="speed-control">
+              <option value="slow">慢</option>
+              <option value="normal" selected>中</option>
+              <option value="fast">快</option>
+            </select>
+          </label>
+          <button id="role-toggle-btn" class="btn">隐藏身份</button>
+          <label>
+            身份揭示
+            <select id="reveal-policy">
+              <option value="onDeath">死后揭示</option>
+              <option value="endOnly" selected>结束后统一揭示</option>
+            </select>
+          </label>
+          <button id="start-btn" class="btn btn-primary">开始</button>
+          <button id="pause-btn" class="btn">暂停</button>
+          <button id="resume-btn" class="btn">继续</button>
+          <button id="reset-btn" class="btn btn-warn">重置</button>
+        </div>
+      </header>
+
+      <main class="board">
+        <aside class="panel panel-left">
+          <div class="panel-title">
+            <h2>AI玩家</h2>
+            <span id="alive-count">0 存活</span>
+          </div>
+          <div id="player-list" class="player-list"></div>
+        </aside>
+
+        <section class="panel panel-center">
+          <div class="panel-title">
+            <h2>主场景</h2>
+            <span id="timeline-hint">等待开始</span>
+          </div>
+          <div id="action-stage" class="action-stage"></div>
+          <div class="panel-title split">
+            <h3>流程记录</h3>
+            <button id="clear-log" class="btn btn-tiny">清空显示</button>
+          </div>
+          <div id="timeline" class="timeline"></div>
+        </section>
+
+        <aside class="panel panel-right">
+          <div class="panel-title split">
+            <h2>思考面板</h2>
+            <div class="thought-tools">
+              <button id="thought-lock" class="btn btn-tiny">锁定查看</button>
+              <button id="thought-latest" class="btn btn-tiny">跳到最新</button>
+              <button id="thought-pause" class="btn btn-tiny">暂停打字</button>
+              <button id="thought-replay" class="btn btn-tiny">回放</button>
+              <button id="thought-copy" class="btn btn-tiny">复制</button>
+            </div>
+          </div>
+
+          <div class="thought-header">
+            <div id="selected-ai">当前：无</div>
+            <div id="thought-progress">-</div>
+            <div id="thought-new-hint" class="state alive hidden">有新记录</div>
+          </div>
+          <article id="thought-live" class="thought-live"></article>
+          <div id="thought-history" class="thought-history"></div>
+        </aside>
+      </main>
+
+      <section class="panel footer-panel">
+        <div class="panel-title split">
+          <h2>模型配置</h2>
+          <span>可动态切换，立即生效</span>
+        </div>
+        <div class="model-config">
+          <label>
+            提供方
+            <select id="llm-provider">
+              <option value="mock" selected>Mock（本地规则）</option>
+              <option value="openai">OpenAI兼容</option>
+              <option value="glm">GLM（智谱）</option>
+            </select>
+          </label>
+          <label>
+            模型
+            <input id="llm-model" value="gpt-4.1-mini" />
+          </label>
+          <label>
+            温度
+            <input id="llm-temperature" type="number" min="0" max="2" step="0.1" value="0.7" />
+          </label>
+          <label class="wide">
+            API Base URL
+            <input id="llm-base-url" value="https://api.openai.com/v1" />
+          </label>
+          <label class="wide">
+            API Key
+            <input id="llm-api-key" type="password" placeholder="仅保存在浏览器本地" />
+          </label>
+          <button id="save-config" class="btn btn-primary">保存配置</button>
+        </div>
+        <div id="llm-check-msg" class="config-msg hidden" role="status" aria-live="polite"></div>
+      </section>
+
+      <section class="panel footer-panel">
+        <div class="panel-title split">
+          <h2>本局记录</h2>
+          <span id="summary-hint">游戏结束后可查看完整回放</span>
+        </div>
+        <pre id="full-record" class="full-record"></pre>
+      </section>
+    </div>
+
+    <div id="restore-banner" class="restore-banner hidden">
+      <p>检测到未完成对局，是否恢复？</p>
+      <div>
+        <button id="restore-yes" class="btn btn-primary">恢复</button>
+        <button id="restore-no" class="btn btn-warn">重置开新局</button>
+      </div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

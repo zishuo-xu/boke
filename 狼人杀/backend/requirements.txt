@@ -1,0 +1,8 @@
+Flask==3.0.0
+Flask-CORS==4.0.0
+flask-socketio==5.3.6
+python-socketio==5.10.0
+openai==1.3.0
+anthropic==0.7.0
+zhipuai==2.0.1
+python-dotenv==1.0.0

@@ -28,9 +28,11 @@
       <form class="d-flex me-3 search-form" method="get" action="{{ url_for('public.search') }}">
         <input class="form-control me-2 search-input" name="q" placeholder="搜索文章">
       </form>
-      {% if current_user.is_authenticated %}
+      {% if is_admin_user %}
       <a class="btn btn-success btn-sm me-2" href="{{ url_for('admin.post_new') }}">新增文章</a>
       <a class="btn btn-outline-light btn-sm me-2" href="{{ url_for('admin.dashboard') }}">后台管理</a>
+      <a class="btn btn-warning btn-sm" href="{{ url_for('auth.logout') }}">退出</a>
+      {% elif current_user.is_authenticated %}
       <a class="btn btn-warning btn-sm" href="{{ url_for('auth.logout') }}">退出</a>
       {% else %}
       <a class="btn btn-outline-light btn-sm me-2" href="{{ url_for('auth.login') }}">登录</a>

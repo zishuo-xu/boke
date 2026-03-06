@@ -1,11 +1,13 @@
 from datetime import timedelta
 
 from flask import Flask, session
+from flask_login import current_user
 
 from .admin import admin_bp
 from .auth import auth_bp
 from .extensions import db, login_manager
 from .models import User
+from .permissions import is_admin_user
 from .public import public_bp
 
 
@@ -21,6 +23,7 @@ def create_app():
         SQLALCHEMY_DATABASE_URI="sqlite:///blog.db",
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=1),
+        ADMIN_USERNAMES={"admin"},
     )
 
     db.init_app(app)
@@ -35,6 +38,14 @@ def create_app():
         if "_user_id" in session:
             session.permanent = True
             session.modified = True
+
+    @app.context_processor
+    def inject_auth_flags():
+        return {
+            "is_admin_user": is_admin_user(
+                current_user, app.config.get("ADMIN_USERNAMES", {"admin"})
+            )
+        }
 
     @app.cli.command("init-db")
     def init_db_command():

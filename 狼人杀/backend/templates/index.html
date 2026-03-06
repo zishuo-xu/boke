@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI机器人狼人杀</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- 顶部控制栏 -->
+        <header class="header">
+            <div class="header-left">
+                <h1>🐺 AI机器人狼人杀</h1>
+                <div class="phase-indicator" id="phaseIndicator">
+                    <span class="phase-icon">🎮</span>
+                    <span class="phase-text" id="phaseText">等待开始</span>
+                </div>
+            </div>
+            <div class="header-center">
+                <div class="day-counter" id="dayCounter">第 1 天</div>
+            </div>
+            <div class="header-right">
+                <div class="game-controls">
+                    <select id="playerCount" class="control-select">
+                        <option value="6">6人局</option>
+                        <option value="8">8人局</option>
+                        <option value="9">9人局</option>
+                        <option value="10">10人局</option>
+                        <option value="12" selected>12人局</option>
+                    </select>
+                    <select id="llmProvider" class="control-select">
+                        <option value="mock">模拟AI</option>
+                        <option value="glm" selected>GLM-4/5</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="anthropic">Anthropic</option>
+                    </select>
+                    <select id="speedControl" class="control-select">
+                        <option value="slow">慢速</option>
+                        <option value="medium" selected>中速</option>
+                        <option value="fast">快速</option>
+                    </select>
+                    <button id="startGame" class="btn btn-primary">开始游戏</button>
+                    <button id="pauseGame" class="btn btn-warning" disabled>暂停</button>
+                    <button id="resetGame" class="btn btn-danger">重置</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 左侧玩家列表 -->
+            <aside class="players-panel">
+                <div class="panel-header">
+                    <h2>👥 玩家列表</h2>
+                    <button id="toggleRoles" class="btn-small">显示身份</button>
+                </div>
+                <div class="players-grid" id="playersGrid">
+                    <!-- 玩家卡片将通过JS动态生成 -->
+                </div>
+            </aside>
+
+            <!-- 中间游戏区域 -->
+            <section class="game-area">
+                <!-- 主持人消息区 -->
+                <div class="moderator-box" id="moderatorBox">
+                    <div class="moderator-avatar">🎤</div>
+                    <div class="moderator-content">
+                        <h3>AI主持人</h3>
+                        <p id="moderatorMessage">欢迎来到AI机器人狼人杀游戏！点击"开始游戏"按钮开始。</p>
+                    </div>
+                </div>
+
+                <!-- 游戏主场景 -->
+                <div class="game-scene" id="gameScene">
+                    <div class="scene-placeholder">
+                        <div class="placeholder-icon">🎭</div>
+                        <p>游戏即将开始...</p>
+                    </div>
+                </div>
+
+                <!-- 当前操作区 -->
+                <div class="current-action" id="currentAction">
+                    <div class="action-header">
+                        <span class="action-icon">⚡</span>
+                        <h3>当前操作</h3>
+                    </div>
+                    <div class="action-content" id="actionContent">
+                        <p>等待游戏开始...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 右侧思考面板 -->
+            <aside class="thoughts-panel">
+                <div class="panel-header">
+                    <h2>🤔 AI思考过程</h2>
+                    <select id="playerFilter" class="control-select">
+                        <option value="all">显示全部</option>
+                    </select>
+                </div>
+                <div class="thoughts-list" id="thoughtsList">
+                    <div class="thought-placeholder">
+                        <p>AI的思考过程将在这里显示</p>
+                    </div>
+                </div>
+            </aside>
+        </main>
+
+        <!-- 底部状态栏 -->
+        <footer class="footer">
+            <div class="status-item">
+                <span class="status-label">游戏状态：</span>
+                <span id="gameStatus" class="status-value">未开始</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">存活玩家：</span>
+                <span id="aliveCount" class="status-value">0</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">当前速度：</span>
+                <span id="currentSpeed" class="status-value">中速</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- 玩家详情弹窗 -->
+    <div class="modal" id="playerModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalPlayerName">玩家详情</h2>
+                <button class="modal-close" id="closeModal">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- 玩家详情内容 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.IO -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+
+    <!-- 调试脚本 -->
+    <script>
+        console.log('=== 调试信息 ===');
+        console.log('Socket.IO:', typeof io);
+        console.log('开始按钮:', document.getElementById('startGame'));
+
+        // 直接测试fetch API
+        async function testApi() {
+            console.log('测试API连接...');
+            try {
+                const response = await fetch('/api/game/status', {
+                    method: 'GET',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                console.log('响应状态:', response.status);
+                const data = await response.json();
+                console.log('响应数据:', data);
+                alert('API连接正常！');
+            } catch (error) {
+                console.error('API测试失败:', error);
+                alert('API连接失败: ' + error.message);
+            }
+        }
+
+        // 添加测试按钮
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('DOM已加载');
+            const testBtn = document.createElement('button');
+            testBtn.textContent = '测试API';
+            testBtn.style.margin = '10px';
+            testBtn.style.padding = '5px 10px';
+            testBtn.onclick = testApi;
+            document.querySelector('.header-right .game-controls').appendChild(testBtn);
+        });
+    </script>
+
+    <!-- 主JS文件 -->
+    <script src="/static/js/game.js"></script>
+</body>
+</html>

@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>饮食热量追踪器</title>
+  <style>
+    :root { --bg:#f4f8f6; --card:#ffffff; --text:#17221b; --muted:#5f6e62; --accent:#2f8f64; --warn:#c24f3d; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"PingFang SC","Noto Sans SC",sans-serif; background:radial-gradient(circle at 10% 10%,#d8f4e6,transparent 35%),var(--bg); color:var(--text); }
+    .wrap { max-width:1000px; margin:0 auto; padding:20px; display:grid; gap:14px; }
+    .card { background:var(--card); border-radius:14px; padding:14px; box-shadow:0 8px 20px rgba(0,0,0,.05); }
+    h1,h2 { margin:.2rem 0 .6rem; }
+    .row { display:flex; gap:8px; flex-wrap:wrap; }
+    input,select,textarea,button { border:1px solid #d8e2db; border-radius:8px; padding:8px 10px; font-size:14px; }
+    textarea { width:100%; min-height:90px; }
+    button { background:var(--accent); color:#fff; cursor:pointer; }
+    button.ghost { background:#fff; color:var(--text); }
+    .kpi { display:grid; grid-template-columns:repeat(4,minmax(100px,1fr)); gap:8px; }
+    .mini { font-size:12px; color:var(--muted); }
+    .bar { background:#eef3ef; border-radius:999px; overflow:hidden; height:8px; margin-top:4px; }
+    .bar > i { display:block; background:var(--accent); height:100%; }
+    .danger { color:var(--warn); }
+    table { width:100%; border-collapse:collapse; }
+    td,th { border-bottom:1px solid #edf2ee; padding:6px; text-align:left; font-size:13px; }
+    @media (max-width:720px){ .kpi { grid-template-columns:repeat(2,minmax(100px,1fr)); } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>极简饮食追踪</h1>
+    <div class="row">
+      <input id="date" type="date" />
+      <button id="prevDay" class="ghost">前一天</button>
+      <button id="nextDay" class="ghost">后一天</button>
+      <button id="load">刷新</button>
+      <a href="http://localhost:8000/export/csv" target="_blank"><button class="ghost">导出 CSV</button></a>
+      <a href="http://localhost:8000/backup/db" target="_blank"><button class="ghost">备份数据库</button></a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>一句话记录</h2>
+    <textarea id="text" placeholder="例如：午餐 鸡胸肉200g + 米饭150g + 西兰花100g"></textarea>
+    <div class="row">
+      <select id="meal"><option value="">自动识别餐次</option><option value="breakfast">早餐</option><option value="lunch">午餐</option><option value="dinner">晚餐</option><option value="snack">加餐</option></select>
+      <button id="parse">记录并分析</button>
+      <span id="parseStatus" class="mini"></span>
+    </div>
+    <div id="draft"></div>
+  </div>
+
+  <div class="card">
+    <h2>当日看板</h2>
+    <div id="advice" class="mini"></div>
+    <div class="kpi" id="kpi"></div>
+  </div>
+
+  <div class="card">
+    <h2>历史记录</h2>
+    <div id="history"></div>
+  </div>
+
+  <div class="card">
+    <h2>个人信息与目标</h2>
+    <div class="row" id="profileForm"></div>
+    <button id="saveProfile">保存目标</button>
+  </div>
+
+  <div class="card">
+    <h2>LLM 配置</h2>
+    <div class="row" id="llmForm"></div>
+    <button id="saveLLM">保存 LLM 配置</button>
+  </div>
+</div>
+<script>
+const API = 'http://localhost:8000';
+const state = { draft: null, summary: null };
+
+function q(id){ return document.getElementById(id); }
+function fmt(x){ return Number(x||0).toFixed(1); }
+function pct(actual, target){ if (!target) return 0; return Math.min(100, Math.max(0, (actual/target*100))); }
+function today(){ return new Date().toISOString().slice(0,10); }
+
+q('date').value = today();
+q('nextDay').onclick = ()=>shiftDay(1);
+q('prevDay').onclick = ()=>shiftDay(-1);
+q('load').onclick = ()=>loadDay();
+q('parse').onclick = ()=>parseText();
+q('saveProfile').onclick = ()=>saveProfile();
+q('saveLLM').onclick = ()=>saveLLM();
+
+function shiftDay(step){
+  const d = new Date(q('date').value);
+  d.setDate(d.getDate()+step);
+  q('date').value = d.toISOString().slice(0,10);
+  loadDay();
+}
+
+async function api(path, options){
+  const res = await fetch(API + path, options);
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
+
+function renderDraft(){
+  if (!state.draft) return q('draft').innerHTML = '';
+  const d = state.draft;
+  q('draft').innerHTML = `
+    <table><tr><th>食物</th><th>重量(g)</th><th>热量</th><th>蛋白</th><th>碳水</th><th>脂肪</th></tr>
+    ${d.items.map((x,i)=>`<tr>
+      <td><input data-k="name" data-i="${i}" value="${x.name}" /></td>
+      <td><input data-k="grams" data-i="${i}" type="number" value="${x.grams}" /></td>
+      <td><input data-k="calories" data-i="${i}" type="number" value="${x.calories}" /></td>
+      <td><input data-k="protein" data-i="${i}" type="number" value="${x.protein}" /></td>
+      <td><input data-k="carbs" data-i="${i}" type="number" value="${x.carbs}" /></td>
+      <td><input data-k="fat" data-i="${i}" type="number" value="${x.fat}" /></td>
+    </tr>`).join('')}
+    </table>
+    <div class="mini">本次汇总: ${fmt(d.total_calories)} kcal / P ${fmt(d.total_protein)} / C ${fmt(d.total_carbs)} / F ${fmt(d.total_fat)}</div>
+    <div class="row">
+      <button id="saveEntry">确认保存</button>
+      <button id="addRow" class="ghost">新增食物</button>
+    </div>
+  `;
+  q('draft').querySelectorAll('input[data-k]').forEach(el=>el.onchange=e=>{
+    const i = Number(e.target.dataset.i); const k = e.target.dataset.k;
+    state.draft.items[i][k] = k==='name' ? e.target.value : Number(e.target.value||0);
+    recalcDraft();
+  });
+  q('saveEntry').onclick = saveEntry;
+  q('addRow').onclick = ()=>{ state.draft.items.push({name:'自定义食物',grams:100,calories:120,protein:6,carbs:12,fat:4}); recalcDraft(); renderDraft(); };
+}
+
+function recalcDraft(){
+  const t = state.draft.items.reduce((a,x)=>({
+    calories:a.calories + Number(x.calories||0), protein:a.protein + Number(x.protein||0), carbs:a.carbs + Number(x.carbs||0), fat:a.fat + Number(x.fat||0)
+  }),{calories:0,protein:0,carbs:0,fat:0});
+  state.draft.total_calories=t.calories; state.draft.total_protein=t.protein; state.draft.total_carbs=t.carbs; state.draft.total_fat=t.fat;
+  renderDraft();
+}
+
+async function parseText(){
+  q('parseStatus').textContent = '解析中...';
+  try{
+    const data = await api('/entries/parse',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:q('text').value, meal_type:q('meal').value||null, entry_date:q('date').value }) });
+    state.draft = data;
+    renderDraft();
+    q('parseStatus').textContent = '解析完成，可编辑后保存';
+  }catch(e){ q('parseStatus').textContent = '解析失败，可稍后重试'; }
+}
+
+async function saveEntry(){
+  try{
+    await api('/entries',{ method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:q('text').value, meal_type:state.draft.meal_type, entry_date:q('date').value, items:state.draft.items }) });
+    state.draft = null; q('text').value=''; renderDraft(); await loadDay();
+  }catch(e){ alert('保存失败: ' + e.message); }
+}
+
+function macroCard(label, actual, target){
+  return `<div><b>${label}</b><div>${fmt(actual)} / ${fmt(target)}</div><div class="bar"><i style="width:${pct(actual,target)}%"></i></div></div>`;
+}
+
+function renderSummary(){
+  const s = state.summary;
+  q('advice').textContent = s?.advice || '';
+  q('kpi').innerHTML = s ? [
+    macroCard('热量(kcal)', s.actual_calories, s.target_calories),
+    macroCard('蛋白(g)', s.actual_protein, s.target_protein),
+    macroCard('碳水(g)', s.actual_carbs, s.target_carbs),
+    macroCard('脂肪(g)', s.actual_fat, s.target_fat),
+  ].join('') : '';
+
+  const rows = (s?.entries||[]).map(e=>`<tr><td>${e.meal_type}</td><td>${e.original_text}</td><td>${fmt(e.total_calories)}</td><td>${fmt(e.total_protein)}</td><td>${fmt(e.total_carbs)}</td><td>${fmt(e.total_fat)}</td><td><button onclick="delEntry(${e.id})">删除</button></td></tr>`).join('');
+  q('history').innerHTML = `<table><tr><th>餐次</th><th>文本</th><th>热量</th><th>P</th><th>C</th><th>F</th><th>操作</th></tr>${rows}</table>`;
+}
+
+async function delEntry(id){
+  await fetch(`${API}/entries/${id}`,{ method:'DELETE' });
+  await loadDay();
+}
+window.delEntry = delEntry;
+
+async function loadDay(){
+  try{ state.summary = await api(`/summary/day?target_date=${q('date').value}`); renderSummary(); }catch(e){ console.error(e); }
+}
+
+function renderProfileForm(p){
+  q('profileForm').innerHTML = `
+    <input id="sex" value="${p.sex}" placeholder="sex" />
+    <input id="age" type="number" value="${p.age}" placeholder="age" />
+    <input id="height_cm" type="number" value="${p.height_cm}" placeholder="height(cm)" />
+    <input id="weight_kg" type="number" value="${p.weight_kg}" placeholder="weight(kg)" />
+    <select id="activity_level"><option>sedentary</option><option>light</option><option selected>medium</option><option>heavy</option><option>athlete</option></select>
+    <select id="goal"><option>cut</option><option selected>maintain</option><option>bulk</option></select>
+    <input id="calorie_target" type="number" value="${p.calorie_target}" placeholder="calorie" />
+    <input id="protein_target" type="number" value="${p.protein_target}" placeholder="protein" />
+    <input id="carbs_target" type="number" value="${p.carbs_target}" placeholder="carbs" />
+    <input id="fat_target" type="number" value="${p.fat_target}" placeholder="fat" />
+  `;
+  q('activity_level').value = p.activity_level;
+  q('goal').value = p.goal;
+}
+
+async function saveProfile(){
+  const payload = {
+    sex:q('sex').value, age:Number(q('age').value), height_cm:Number(q('height_cm').value), weight_kg:Number(q('weight_kg').value),
+    body_fat_rate:null, activity_level:q('activity_level').value, goal:q('goal').value,
+    calorie_target:Number(q('calorie_target').value), protein_target:Number(q('protein_target').value), carbs_target:Number(q('carbs_target').value), fat_target:Number(q('fat_target').value)
+  };
+  await api('/profile',{ method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  await loadDay();
+}
+
+function renderLLMForm(c){
+  q('llmForm').innerHTML = `
+    <input id="provider" value="${c.provider}" placeholder="provider" />
+    <input id="model" value="${c.model}" placeholder="model" />
+    <input id="api_key" value="${c.api_key}" placeholder="api key" />
+    <input id="base_url" value="${c.base_url}" placeholder="base url" />
+    <input id="enabled" type="checkbox" ${c.enabled ? 'checked' : ''} /> 启用
+    <textarea id="parse_prompt">${c.parse_prompt}</textarea>
+    <textarea id="advice_prompt">${c.advice_prompt}</textarea>
+  `;
+}
+
+async function saveLLM(){
+  const payload = {
+    provider:q('provider').value, model:q('model').value, api_key:q('api_key').value, base_url:q('base_url').value,
+    parse_prompt:q('parse_prompt').value, advice_prompt:q('advice_prompt').value, enabled:q('enabled').checked
+  };
+  await api('/llm-config',{ method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+}
+
+async function bootstrap(){
+  await fetch(API + '/health');
+  const p = await api('/profile'); renderProfileForm(p);
+  const c = await api('/llm-config'); renderLLMForm(c);
+  await loadDay();
+}
+bootstrap();
+</script>
+</body>
+</html>

@@ -12,7 +12,7 @@ auth_bp = Blueprint("auth", __name__)
 @auth_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("public.home"))
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -26,7 +26,7 @@ def login():
         login_user(user)
         session.permanent = True
         session.modified = True
-        return redirect(request.args.get("next") or url_for("admin.dashboard"))
+        return redirect(request.args.get("next") or url_for("public.home"))
 
     return render_template("auth_login.html")
 
@@ -34,7 +34,7 @@ def login():
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
     if current_user.is_authenticated:
-        return redirect(url_for("admin.dashboard"))
+        return redirect(url_for("public.home"))
 
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -56,15 +56,14 @@ def register():
 
         user = User(username=username)
         user.set_password(password)
-
         db.session.add(user)
         db.session.commit()
 
         login_user(user)
         session.permanent = True
         session.modified = True
-        flash("注册成功，已自动登录", "success")
-        return redirect(url_for("admin.dashboard"))
+        flash("注册成功，已登录", "success")
+        return redirect(url_for("public.home"))
 
     return render_template("auth_register.html")
 

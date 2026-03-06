@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股票/基金数据监控面板</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+</head>
+<body>
+    <!-- 导航栏 -->
+    <nav class="navbar">
+        <div class="navbar-brand">股票/基金数据监控面板</div>
+        <div class="navbar-nav">
+            <a href="#" class="nav-link active" data-page="watchlist">自选管理</a>
+            <a href="#" class="nav-link" data-page="market">数据监控</a>
+            <a href="#" class="nav-link" data-page="alerts">预警管理</a>
+        </div>
+        <div class="navbar-user">
+            <span id="user-nickname"></span>
+            <button class="btn" onclick="logout()">退出</button>
+        </div>
+    </nav>
+
+    <!-- 主内容区 -->
+    <div class="app-container">
+        <!-- 加载提示 -->
+        <div id="loading" class="loading-overlay" style="display: none;">
+            <div class="loading-spinner"></div>
+            <span>加载中...</span>
+        </div>
+
+        <!-- 自选管理页面 -->
+        <div id="page-watchlist" class="page active">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">自选管理</h2>
+                    <button class="btn btn-primary" onclick="showAddStockModal()">+ 添加标的</button>
+                    <div class="search-box">
+                        <input type="text" id="search-code-input" placeholder="输入股票代码查询" onkeypress="handleSearchKeypress(event)">
+                        <button class="btn btn-small" onclick="searchStock()">查询</button>
+                    </div>
+                </div>
+
+                <!-- 分组选择 -->
+                <div class="group-selector">
+                    <button class="group-tab active" data-group="all" onclick="selectGroup('all')">全部</button>
+                    <button class="group-tab" data-group="0" onclick="selectGroup(0)">未分组</button>
+                    <div id="group-list"></div>
+                </div>
+
+                <!-- 搜索结果弹窗 -->
+    <div id="search-result-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>股票查询结果</h3>
+                <button class="modal-close" onclick="closeModal('search-result-modal')">&times;</button>
+            </div>
+            <div id="search-result-content" class="stock-data-card" style="display: none;">
+                <!-- 动态填充搜索结果 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- 自选列表 -->
+                <div class="stock-list">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>代码</th>
+                                <th>名称</th>
+                                <th>类型</th>
+                                <th>现价/净值</th>
+                                <th>涨跌幅</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stock-list-body">
+                            <!-- 动态填充 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="watchlist-empty" class="empty-state" style="display: none;">
+                    <p>暂无自选标的，点击右上角添加</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 数据监控页面 -->
+        <div id="page-market" class="page" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">数据监控</h2>
+                    <button class="btn btn-primary" onclick="refreshMarketData()">刷新数据</button>
+                </div>
+
+                <!-- 标的选择 -->
+                <div class="stock-selector">
+                    <select id="market-stock-select" onchange="selectStock()">
+                        <option value="">请选择标的</option>
+                    </select>
+                </div>
+
+                <!-- 实时数据卡片 -->
+                <div id="stock-data-card" class="stock-data-card" style="display: none;">
+                    <div class="data-row">
+                        <div class="data-item">
+                            <span class="data-label">代码</span>
+                            <span id="stock-code" class="data-value">--</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">名称</span>
+                            <span id="stock-name" class="data-value">--</span>
+                        </div>
+                    </div>
+                    <div class="data-row">
+                        <div class="data-item large">
+                            <span class="data-label">现价/净值</span>
+                            <span id="stock-price" class="data-value price">--</span>
+                        </div>
+                        <div class="data-item large">
+                            <span class="data-label">涨跌幅</span>
+                            <span id="stock-change" class="data-value change">--%</span>
+                        </div>
+                    </div>
+                    <div class="data-row">
+                        <div class="data-item">
+                            <span class="data-label">最高</span>
+                            <span id="stock-high" class="data-value">--</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">最低</span>
+                            <span id="stock-low" class="data-value">--</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">成交量</span>
+                            <span id="stock-volume" class="data-value">--</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 历史走势图表 -->
+                <div id="chart-container" class="chart-container" style="display: none;">
+                    <div class="period-selector">
+                        <button class="period-btn" onclick="changePeriod('7d')">7天</button>
+                        <button class="period-btn active" onclick="changePeriod('30d')">30天</button>
+                        <button class="period-btn" onclick="changePeriod('90d')">90天</button>
+                        <button class="period-btn" onclick="changePeriod('1y')">1年</button>
+                    </div>
+                    <div id="stock-chart" style="width: 100%; height: 400px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 预警管理页面 -->
+        <div id="page-alerts" class="page" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">预警管理</h2>
+                    <button class="btn btn-primary" onclick="showAddAlertModal()">+ 添加预警</button>
+                </div>
+
+                <!-- 预警列表 -->
+                <div class="alert-list">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>标的</th>
+                                <th>预警类型</th>
+                                <th>阈值</th>
+                                <th>状态</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="alert-list-body">
+                            <!-- 动态填充 -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="alert-empty" class="empty-state" style="display: none;">
+                    <p>暂无预警规则，点击右上角添加</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加标的弹窗 -->
+    <div id="add-stock-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>添加标的</h3>
+                <button class="modal-close" onclick="closeModal('add-stock-modal')">&times;</button>
+            </div>
+            <form id="add-stock-form">
+                <div class="form-group">
+                    <label>标的类型</label>
+                    <select id="stock-type" name="type" required>
+                        <option value="stock">股票</option>
+                        <option value="fund">基金</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>标的代码</label>
+                    <input type="text" id="stock-code-input" name="code" placeholder="例如：600036" required>
+                </div>
+                <div class="form-group">
+                    <label>标的名称</label>
+                    <input type="text" id="stock-name-input" name="name" placeholder="例如：招商银行" required>
+                </div>
+                <div class="form-group">
+                    <label>分组</label>
+                    <select id="stock-group-input" name="group_id">
+                        <option value="">未分组</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">添加</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 消息提示 -->
+    <div id="message" class="message-toast" style="display: none;"></div>
+
+    <!-- 免责声明 -->
+    <footer class="disclaimer">
+        <h3>免责声明</h3>
+        <p>本工具仅提供金融数据参考，不构成任何投资建议。投资者据此操作，风险自担。市场有风险，投资需谨慎。</p>
+    </footer>
+
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/watchlist.js"></script>
+    <script src="/static/js/market.js"></script>
+    <script src="/static/js/charts.js"></script>
+</body>
+</html>

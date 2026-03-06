@@ -1,8 +1,9 @@
-from flask import Blueprint, flash, redirect, render_template, request, url_for
-from flask_login import current_user, login_required
+from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required, logout_user
 
 from .extensions import db
 from .models import Category, Post, Tag
+from .permissions import is_admin_user
 from .utils import auto_summary
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -12,6 +13,10 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 def require_admin_login():
     if not current_user.is_authenticated:
         return redirect(url_for("auth.login", next=request.url))
+    if not is_admin_user(current_user, current_app.config.get("ADMIN_USERNAMES", {"admin"})):
+        logout_user()
+        flash("无后台管理权限，请使用管理员账号登录。", "warning")
+        return redirect(url_for("auth.login"))
 
 
 @admin_bp.route("/")

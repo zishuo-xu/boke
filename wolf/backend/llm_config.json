@@ -1,0 +1,7 @@
+{
+  "provider": "glm",
+  "model": "GLM-5",
+  "temperature": 0.4,
+  "base_url": "https://open.bigmodel.cn/api/paas/v4",
+  "api_key": "20b28c25d9894302990ebbef5f818d71.SbuZQrHq821YWi2A"
+}
