@@ -11,40 +11,45 @@
 <div class="card form-card">
 <div class="card-body">
 <form method="post">
+  <input type="hidden" name="draft_key" id="draft_key" value="{{ draft_key or '' }}">
+  <input type="hidden" id="post_id" value="{{ post.id if post else '' }}">
   <div class="row g-3">
     <div class="col-md-8">
       <label class="form-label">标题</label>
-      <input class="form-control" name="title" value="{{ post.title if post else '' }}" required>
+      <input class="form-control" name="title" id="title" value="{{ draft.title if draft else (post.title if post else '') }}" required>
     </div>
     <div class="col-md-4">
       <label class="form-label">状态</label>
-      <select class="form-select" name="status">
-        <option value="0" {% if post and post.status == 0 %}selected{% endif %}>草稿</option>
-        <option value="1" {% if post and post.status == 1 %}selected{% endif %}>发布</option>
+      {% set selected_status = draft.status if draft else (post.status if post else 0) %}
+      <select class="form-select" name="status" id="status">
+        <option value="0" {% if selected_status == 0 %}selected{% endif %}>草稿</option>
+        <option value="1" {% if selected_status == 1 %}selected{% endif %}>发布</option>
       </select>
     </div>
     <div class="col-md-6">
       <label class="form-label">分类</label>
-      <select class="form-select" name="category_id">
+      {% set selected_category = draft.category_id if draft else (post.category_id if post else None) %}
+      <select class="form-select" name="category_id" id="category_id">
         <option value="">未分类</option>
         {% for category in categories %}
-        <option value="{{ category.id }}" {% if post and post.category_id == category.id %}selected{% endif %}>{{ category.name }}</option>
+        <option value="{{ category.id }}" {% if selected_category == category.id %}selected{% endif %}>{{ category.name }}</option>
         {% endfor %}
       </select>
     </div>
     <div class="col-md-6">
       <label class="form-label">标签（英文逗号分隔）</label>
-      <input class="form-control" name="tags" value="{{ raw_tags if raw_tags else '' }}">
+      <input class="form-control" name="tags" id="tags" value="{{ draft.tags_text if draft else (raw_tags if raw_tags else '') }}">
     </div>
     <div class="col-12">
       <label class="form-label">摘要（留空自动生成）</label>
-      <textarea class="form-control" rows="2" name="summary">{{ post.summary if post else '' }}</textarea>
+      <textarea class="form-control" rows="2" name="summary" id="summary">{{ draft.summary if draft else (post.summary if post else '') }}</textarea>
     </div>
     <div class="col-12">
       <label class="form-label">Markdown内容</label>
       <div id="post-editor">
-        <textarea style="display:none;" name="content" required>{{ post.content if post else '' }}</textarea>
+        <textarea style="display:none;" name="content" id="content" required>{{ draft.content if draft else (post.content if post else '') }}</textarea>
       </div>
+      <div class="small text-muted mt-2" id="autosave_status">自动保存未开始</div>
     </div>
   </div>
   <div class="mt-3">
@@ -54,9 +59,40 @@
 </form>
 </div>
 </div>
+
+{% if post %}
+<div class="card mt-4">
+  <div class="card-header">版本历史（最近 20 条）</div>
+  <div class="card-body table-responsive">
+    <table class="table table-striped align-middle mb-0">
+      <thead>
+        <tr><th>版本ID</th><th>时间</th><th>说明</th><th>操作人</th><th>操作</th></tr>
+      </thead>
+      <tbody>
+        {% for v in versions %}
+        <tr>
+          <td>#{{ v.id }}</td>
+          <td>{{ v.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+          <td>{{ v.version_note }}</td>
+          <td>{{ v.editor.username if v.editor else '-' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('admin.post_rollback', post_id=post.id, version_id=v.id) }}" onsubmit="return confirm('确认回滚到该版本？')">
+              <button class="btn btn-sm btn-outline-primary" type="submit">回滚到此版本</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-muted">暂无版本历史</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/editor.md@1.5.0/editormd.min.js"></script>
 <script src="{{ url_for('static', filename='js/admin_editor.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin_draft_autosave.js') }}"></script>
 {% endblock %}

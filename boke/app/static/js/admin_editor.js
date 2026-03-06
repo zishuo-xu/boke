@@ -9,7 +9,7 @@
       return;
     }
 
-    window.editormd("post-editor", {
+    window.__postEditor = window.editormd("post-editor", {
       width: "100%",
       height: 640,
       path: "https://cdn.jsdelivr.net/npm/editor.md@1.5.0/lib/",

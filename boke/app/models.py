@@ -64,3 +64,40 @@ class Post(TimestampMixin, db.Model):
     @property
     def is_published(self) -> bool:
         return self.status == self.STATUS_PUBLISHED
+
+
+class PostVersion(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey("post.id"), nullable=False, index=True)
+    editor_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+
+    title = db.Column(db.String(100), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    summary = db.Column(db.String(500), nullable=False, default="")
+    status = db.Column(db.Integer, nullable=False, default=Post.STATUS_DRAFT)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), index=True)
+    tags_text = db.Column(db.String(500), nullable=False, default="")
+    version_note = db.Column(db.String(120), nullable=False, default="")
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    post = db.relationship("Post", backref="versions")
+    editor = db.relationship("User")
+    category = db.relationship("Category")
+
+
+class PostDraft(TimestampMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    post_id = db.Column(db.Integer, db.ForeignKey("post.id"), nullable=True, index=True)
+    draft_key = db.Column(db.String(64), nullable=True, index=True)
+
+    title = db.Column(db.String(100), nullable=False, default="")
+    content = db.Column(db.Text, nullable=False, default="")
+    summary = db.Column(db.String(500), nullable=False, default="")
+    status = db.Column(db.Integer, nullable=False, default=Post.STATUS_DRAFT)
+    category_id = db.Column(db.Integer, db.ForeignKey("category.id"), index=True)
+    tags_text = db.Column(db.String(500), nullable=False, default="")
+
+    user = db.relationship("User")
+    post = db.relationship("Post")
+    category = db.relationship("Category")

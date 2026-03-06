@@ -1,8 +1,10 @@
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+import secrets
+
+from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
 
 from .extensions import db
-from .models import Category, Post, Tag
+from .models import Category, Post, PostDraft, PostVersion, Tag
 from .permissions import is_admin_user
 from .utils import auto_summary
 
@@ -54,10 +56,38 @@ def parse_tags(raw_tags: str):
     return tags
 
 
+def snapshot_post(post: Post, editor_id: int, note: str) -> None:
+    version = PostVersion(
+        post_id=post.id,
+        editor_id=editor_id,
+        title=post.title,
+        content=post.content,
+        summary=post.summary,
+        status=post.status,
+        category_id=post.category_id,
+        tags_text=", ".join([t.name for t in post.tags]),
+        version_note=note,
+    )
+    db.session.add(version)
+
+
+def get_draft_for_form(post_id: int | None, draft_key: str) -> PostDraft | None:
+    query = PostDraft.query.filter_by(user_id=current_user.id)
+    if post_id:
+        return query.filter_by(post_id=post_id).first()
+    if draft_key:
+        return query.filter_by(draft_key=draft_key).first()
+    return query.filter_by(post_id=None).order_by(PostDraft.updated_at.desc()).first()
+
+
 @admin_bp.route("/posts/new", methods=["GET", "POST"])
 @login_required
 def post_new():
+    draft_key = request.args.get("draft_key", "").strip()
     categories = Category.query.order_by(Category.sort.asc(), Category.id.asc()).all()
+    draft = get_draft_for_form(post_id=None, draft_key=draft_key)
+    if not draft_key:
+        draft_key = (draft.draft_key if draft and draft.draft_key else "") or secrets.token_hex(16)
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         content = request.form.get("content", "").strip()
@@ -68,7 +98,12 @@ def post_new():
 
         if not title or not content:
             flash("标题和内容不能为空", "danger")
-            return render_template("admin/post_form.html", categories=categories)
+            return render_template(
+                "admin/post_form.html",
+                categories=categories,
+                draft_key=request.form.get("draft_key", draft_key),
+                versions=[],
+            )
 
         post = Post(
             title=title,
@@ -81,10 +116,23 @@ def post_new():
 
         db.session.add(post)
         db.session.commit()
+        snapshot_post(post, current_user.id, "初始创建")
+        draft = get_draft_for_form(post_id=None, draft_key=request.form.get("draft_key", ""))
+        if draft:
+            db.session.delete(draft)
+        db.session.commit()
         flash("文章已创建", "success")
         return redirect(url_for("admin.posts"))
 
-    return render_template("admin/post_form.html", categories=categories)
+    if draft:
+        flash("已为你恢复未发布草稿内容", "info")
+    return render_template(
+        "admin/post_form.html",
+        categories=categories,
+        draft=draft,
+        draft_key=draft_key,
+        versions=[],
+    )
 
 
 @admin_bp.route("/posts/<int:post_id>/edit", methods=["GET", "POST"])
@@ -92,8 +140,16 @@ def post_new():
 def post_edit(post_id: int):
     post = Post.query.get_or_404(post_id)
     categories = Category.query.order_by(Category.sort.asc(), Category.id.asc()).all()
+    versions = (
+        PostVersion.query.filter_by(post_id=post.id)
+        .order_by(PostVersion.created_at.desc(), PostVersion.id.desc())
+        .limit(20)
+        .all()
+    )
+    draft = get_draft_for_form(post_id=post.id, draft_key="")
 
     if request.method == "POST":
+        snapshot_post(post, current_user.id, "手动保存前")
         post.title = request.form.get("title", "").strip()
         post.content = request.form.get("content", "").strip()
         post.summary = request.form.get("summary", "").strip() or auto_summary(post.content)
@@ -105,15 +161,34 @@ def post_edit(post_id: int):
 
         if not post.title or not post.content:
             flash("标题和内容不能为空", "danger")
-            return render_template("admin/post_form.html", post=post, categories=categories)
+            return render_template(
+                "admin/post_form.html",
+                post=post,
+                categories=categories,
+                versions=versions,
+                draft_key="",
+            )
 
         db.session.commit()
+        snapshot_post(post, current_user.id, "手动保存后")
+        draft = get_draft_for_form(post_id=post.id, draft_key="")
+        if draft:
+            db.session.delete(draft)
+            db.session.commit()
         flash("文章已更新", "success")
         return redirect(url_for("admin.posts"))
 
     raw_tags = ", ".join([tag.name for tag in post.tags])
+    if draft:
+        flash("检测到自动保存草稿，已优先载入草稿内容", "info")
     return render_template(
-        "admin/post_form.html", post=post, categories=categories, raw_tags=raw_tags
+        "admin/post_form.html",
+        post=post,
+        categories=categories,
+        raw_tags=raw_tags,
+        draft=draft,
+        versions=versions,
+        draft_key="",
     )
 
 
@@ -125,6 +200,60 @@ def post_delete(post_id: int):
     db.session.commit()
     flash("文章已删除", "info")
     return redirect(url_for("admin.posts"))
+
+
+@admin_bp.route("/posts/autosave", methods=["POST"])
+@login_required
+def post_autosave():
+    data = request.get_json(silent=True) or {}
+    post_id = data.get("post_id")
+    draft_key = (data.get("draft_key") or "").strip()
+
+    query = PostDraft.query.filter_by(user_id=current_user.id)
+    draft = None
+    if post_id:
+        draft = query.filter_by(post_id=int(post_id)).first()
+    elif draft_key:
+        draft = query.filter_by(draft_key=draft_key).first()
+
+    if not draft:
+        draft = PostDraft(
+            user_id=current_user.id,
+            post_id=int(post_id) if post_id else None,
+            draft_key=draft_key or None,
+        )
+        db.session.add(draft)
+
+    draft.title = (data.get("title") or "").strip()
+    draft.content = data.get("content") or ""
+    draft.summary = (data.get("summary") or "").strip()
+    draft.status = Post.STATUS_PUBLISHED if str(data.get("status", "0")) == "1" else Post.STATUS_DRAFT
+    draft.category_id = int(data["category_id"]) if data.get("category_id") else None
+    draft.tags_text = (data.get("tags") or "").strip()
+
+    db.session.commit()
+    return jsonify({"ok": True, "updated_at": draft.updated_at.isoformat()})
+
+
+@admin_bp.route("/posts/<int:post_id>/rollback/<int:version_id>", methods=["POST"])
+@login_required
+def post_rollback(post_id: int, version_id: int):
+    post = Post.query.get_or_404(post_id)
+    version = PostVersion.query.filter_by(id=version_id, post_id=post.id).first_or_404()
+
+    snapshot_post(post, current_user.id, f"回滚前备份 v{version.id}")
+    post.title = version.title
+    post.content = version.content
+    post.summary = version.summary
+    post.status = version.status
+    post.category_id = version.category_id
+    post.tags = parse_tags(version.tags_text)
+    db.session.commit()
+    snapshot_post(post, current_user.id, f"已回滚到 v{version.id}")
+    db.session.commit()
+
+    flash(f"已回滚到版本 #{version.id}", "success")
+    return redirect(url_for("admin.post_edit", post_id=post.id))
 
 
 @admin_bp.route("/categories", methods=["GET", "POST"])
