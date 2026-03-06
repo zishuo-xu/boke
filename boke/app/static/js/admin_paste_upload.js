@@ -51,7 +51,7 @@
     return data.url;
   }
 
-  async function onPaste(event) {
+  async function onPasteEvent(event) {
     const items = event.clipboardData && event.clipboardData.items;
     if (!items || !items.length) {
       return;
@@ -78,13 +78,24 @@
     }
   }
 
+  function onCodeMirrorPaste(cm, event) {
+    if (event) {
+      onPasteEvent(event);
+    }
+  }
+
   function attachPasteListener() {
     const editor = window.__postEditor;
     if (!editor || !editor.cm) {
       setTimeout(attachPasteListener, 300);
       return;
     }
-    editor.cm.on("paste", onPaste);
+    editor.cm.on("paste", onCodeMirrorPaste);
+
+    const wrapper = editor.cm.getWrapperElement && editor.cm.getWrapperElement();
+    if (wrapper) {
+      wrapper.addEventListener("paste", onPasteEvent);
+    }
   }
 
   if (document.readyState === "loading") {
