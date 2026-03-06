@@ -61,6 +61,11 @@
       return;
     }
 
+    const postId = value(pick("#post_id"));
+    if (!postId) {
+      return;
+    }
+
     setTimeout(autosave, 6000);
     setInterval(autosave, 15000);
     window.addEventListener("beforeunload", autosave);

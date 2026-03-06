@@ -11,7 +11,6 @@
 <div class="card form-card">
 <div class="card-body">
 <form method="post">
-  <input type="hidden" name="draft_key" id="draft_key" value="{{ draft_key or '' }}">
   <input type="hidden" id="post_id" value="{{ post.id if post else '' }}">
   <div class="row g-3">
     <div class="col-md-8">
@@ -49,7 +48,9 @@
       <div id="post-editor">
         <textarea style="display:none;" name="content" id="content" required>{{ draft.content if draft else (post.content if post else '') }}</textarea>
       </div>
-      <div class="small text-muted mt-2" id="autosave_status">自动保存未开始</div>
+      <div class="small text-muted mt-2" id="autosave_status">
+        {% if post %}自动保存未开始{% else %}新建页不自动保存，请手动保存为草稿{% endif %}
+      </div>
     </div>
   </div>
   <div class="mt-3">

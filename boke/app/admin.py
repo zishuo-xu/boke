@@ -1,5 +1,3 @@
-import secrets
-
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
 
@@ -77,17 +75,13 @@ def get_draft_for_form(post_id: int | None, draft_key: str) -> PostDraft | None:
         return query.filter_by(post_id=post_id).first()
     if draft_key:
         return query.filter_by(draft_key=draft_key).first()
-    return query.filter_by(post_id=None).order_by(PostDraft.updated_at.desc()).first()
+    return None
 
 
 @admin_bp.route("/posts/new", methods=["GET", "POST"])
 @login_required
 def post_new():
-    draft_key = request.args.get("draft_key", "").strip()
     categories = Category.query.order_by(Category.sort.asc(), Category.id.asc()).all()
-    draft = get_draft_for_form(post_id=None, draft_key=draft_key)
-    if not draft_key:
-        draft_key = (draft.draft_key if draft and draft.draft_key else "") or secrets.token_hex(16)
     if request.method == "POST":
         title = request.form.get("title", "").strip()
         content = request.form.get("content", "").strip()
@@ -101,7 +95,6 @@ def post_new():
             return render_template(
                 "admin/post_form.html",
                 categories=categories,
-                draft_key=request.form.get("draft_key", draft_key),
                 versions=[],
             )
 
@@ -117,20 +110,13 @@ def post_new():
         db.session.add(post)
         db.session.commit()
         snapshot_post(post, current_user.id, "初始创建")
-        draft = get_draft_for_form(post_id=None, draft_key=request.form.get("draft_key", ""))
-        if draft:
-            db.session.delete(draft)
         db.session.commit()
         flash("文章已创建", "success")
         return redirect(url_for("admin.posts"))
 
-    if draft:
-        flash("已为你恢复未发布草稿内容", "info")
     return render_template(
         "admin/post_form.html",
         categories=categories,
-        draft=draft,
-        draft_key=draft_key,
         versions=[],
     )
 
@@ -166,7 +152,6 @@ def post_edit(post_id: int):
                 post=post,
                 categories=categories,
                 versions=versions,
-                draft_key="",
             )
 
         db.session.commit()
@@ -188,7 +173,6 @@ def post_edit(post_id: int):
         raw_tags=raw_tags,
         draft=draft,
         versions=versions,
-        draft_key="",
     )
 
 
@@ -207,20 +191,18 @@ def post_delete(post_id: int):
 def post_autosave():
     data = request.get_json(silent=True) or {}
     post_id = data.get("post_id")
-    draft_key = (data.get("draft_key") or "").strip()
+    if not post_id:
+        return jsonify({"ok": False, "message": "new_post_skip"}), 200
 
     query = PostDraft.query.filter_by(user_id=current_user.id)
     draft = None
-    if post_id:
-        draft = query.filter_by(post_id=int(post_id)).first()
-    elif draft_key:
-        draft = query.filter_by(draft_key=draft_key).first()
+    draft = query.filter_by(post_id=int(post_id)).first()
 
     if not draft:
         draft = PostDraft(
             user_id=current_user.id,
-            post_id=int(post_id) if post_id else None,
-            draft_key=draft_key or None,
+            post_id=int(post_id),
+            draft_key=None,
         )
         db.session.add(draft)
 
