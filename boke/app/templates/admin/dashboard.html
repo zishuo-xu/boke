@@ -6,14 +6,16 @@
   <div class="action-group">
     <a class="btn btn-primary" href="{{ url_for('admin.post_new') }}">新建文章</a>
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.posts') }}">文章管理</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.media_library') }}">媒体库</a>
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.categories') }}">分类管理</a>
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.tags') }}">标签管理</a>
   </div>
 </div>
 <div class="row g-3 mb-4">
-  <div class="col-md-4"><div class="card kpi-card"><div class="card-body"><div class="kpi-label">文章总数</div><div class="display-6">{{ stats.post_total }}</div></div></div></div>
-  <div class="col-md-4"><div class="card kpi-card"><div class="card-body"><div class="kpi-label">分类总数</div><div class="display-6">{{ stats.category_total }}</div></div></div></div>
-  <div class="col-md-4"><div class="card kpi-card"><div class="card-body"><div class="kpi-label">标签总数</div><div class="display-6">{{ stats.tag_total }}</div></div></div></div>
+  <div class="col-md-3"><div class="card kpi-card"><div class="card-body"><div class="kpi-label">文章总数</div><div class="display-6">{{ stats.post_total }}</div></div></div></div>
+  <div class="col-md-3"><div class="card kpi-card"><div class="card-body"><div class="kpi-label">分类总数</div><div class="display-6">{{ stats.category_total }}</div></div></div></div>
+  <div class="col-md-3"><div class="card kpi-card"><div class="card-body"><div class="kpi-label">标签总数</div><div class="display-6">{{ stats.tag_total }}</div></div></div></div>
+  <div class="col-md-3"><div class="card kpi-card"><div class="card-body"><div class="kpi-label">媒体总数</div><div class="display-6">{{ stats.media_total }}</div></div></div></div>
 </div>
 <div class="card">
   <div class="card-header">最新文章</div>

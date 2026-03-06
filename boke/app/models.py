@@ -101,3 +101,16 @@ class PostDraft(TimestampMixin, db.Model):
     user = db.relationship("User")
     post = db.relationship("Post")
     category = db.relationship("Category")
+
+
+class MediaAsset(TimestampMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    uploader_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    filename = db.Column(db.String(255), nullable=False)
+    storage_path = db.Column(db.String(500), nullable=False, unique=True)
+    mime_type = db.Column(db.String(100), nullable=False, default="")
+    file_size = db.Column(db.Integer, nullable=False, default=0)
+    width = db.Column(db.Integer, nullable=False, default=0)
+    height = db.Column(db.Integer, nullable=False, default=0)
+
+    uploader = db.relationship("User")

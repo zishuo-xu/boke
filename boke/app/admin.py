@@ -1,8 +1,15 @@
+import os
+from datetime import datetime
+from io import BytesIO
+from uuid import uuid4
+
 from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
+from PIL import Image, UnidentifiedImageError
+from werkzeug.utils import secure_filename
 
 from .extensions import db
-from .models import Category, Post, PostDraft, PostVersion, Tag
+from .models import Category, MediaAsset, Post, PostDraft, PostVersion, Tag
 from .permissions import is_admin_user
 from .utils import auto_summary, render_markdown
 
@@ -26,6 +33,7 @@ def dashboard():
         "post_total": Post.query.count(),
         "category_total": Category.query.count(),
         "tag_total": Tag.query.count(),
+        "media_total": MediaAsset.query.count(),
     }
     latest_posts = Post.query.order_by(Post.created_at.desc()).limit(10).all()
     return render_template("admin/dashboard.html", stats=stats, latest_posts=latest_posts)
@@ -52,6 +60,74 @@ def parse_tags(raw_tags: str):
             db.session.add(tag)
         tags.append(tag)
     return tags
+
+
+def editor_upload_response(success: bool, message: str, url: str = ""):
+    return jsonify({"success": 1 if success else 0, "message": message, "url": url})
+
+
+def normalize_image_and_build_filename(file_storage):
+    original_name = secure_filename(file_storage.filename or "image")
+    ext = (os.path.splitext(original_name)[1] or "").lower()
+    allowed_ext = {".jpg", ".jpeg", ".png", ".webp"}
+    if ext not in allowed_ext:
+        raise ValueError("仅支持 jpg/jpeg/png/webp 格式图片")
+
+    try:
+        image = Image.open(file_storage.stream)
+    except UnidentifiedImageError as err:
+        raise ValueError("无法识别图片文件") from err
+
+    if image.mode not in ("RGB", "RGBA"):
+        image = image.convert("RGB")
+
+    max_dim = int(current_app.config.get("MEDIA_MAX_DIMENSION", 1920))
+    image.thumbnail((max_dim, max_dim))
+
+    uid = uuid4().hex[:16]
+    date_path = datetime.now().strftime("%Y/%m")
+    save_ext = ".jpg" if ext in {".jpg", ".jpeg"} else ext
+    save_name = f"{uid}{save_ext}"
+    upload_subdir = current_app.config.get("MEDIA_UPLOAD_SUBDIR", "uploads/media")
+    storage_rel_dir = os.path.join(upload_subdir, date_path)
+    storage_rel_path = os.path.join(storage_rel_dir, save_name)
+    storage_abs_dir = os.path.join(current_app.root_path, "static", storage_rel_dir)
+    os.makedirs(storage_abs_dir, exist_ok=True)
+    storage_abs_path = os.path.join(storage_abs_dir, save_name)
+
+    output = BytesIO()
+    if save_ext == ".png":
+        image.save(output, format="PNG", optimize=True)
+        mime_type = "image/png"
+    elif save_ext == ".webp":
+        image.save(output, format="WEBP", quality=82, method=6)
+        mime_type = "image/webp"
+    else:
+        image = image.convert("RGB")
+        image.save(
+            output,
+            format="JPEG",
+            quality=int(current_app.config.get("MEDIA_JPEG_QUALITY", 82)),
+            optimize=True,
+        )
+        mime_type = "image/jpeg"
+
+    data = output.getvalue()
+    max_bytes = int(current_app.config.get("MEDIA_MAX_BYTES", 5 * 1024 * 1024))
+    if len(data) > max_bytes:
+        raise ValueError("图片体积过大，请压缩后再上传（<=5MB）")
+
+    with open(storage_abs_path, "wb") as f:
+        f.write(data)
+
+    return {
+        "filename": save_name,
+        "storage_path": storage_rel_path.replace("\\", "/"),
+        "mime_type": mime_type,
+        "file_size": len(data),
+        "width": image.width,
+        "height": image.height,
+    }
 
 
 def snapshot_post(post: Post, editor_id: int, note: str) -> None:
@@ -184,6 +260,61 @@ def post_delete(post_id: int):
     db.session.commit()
     flash("文章已删除", "info")
     return redirect(url_for("admin.posts"))
+
+
+@admin_bp.route("/media")
+@login_required
+def media_library():
+    page = request.args.get("page", 1, type=int)
+    pagination = MediaAsset.query.order_by(MediaAsset.created_at.desc()).paginate(
+        page=page, per_page=24, error_out=False
+    )
+    return render_template(
+        "admin/media.html", pagination=pagination, assets=pagination.items
+    )
+
+
+@admin_bp.route("/media/upload", methods=["POST"])
+@login_required
+def media_upload():
+    file_storage = request.files.get("editormd-image-file") or request.files.get("file")
+    if not file_storage or not file_storage.filename:
+        return editor_upload_response(False, "未检测到上传文件"), 400
+
+    try:
+        meta = normalize_image_and_build_filename(file_storage)
+    except ValueError as e:
+        return editor_upload_response(False, str(e)), 400
+    except Exception:
+        return editor_upload_response(False, "图片处理失败，请重试"), 500
+
+    asset = MediaAsset(
+        uploader_id=current_user.id,
+        filename=meta["filename"],
+        storage_path=meta["storage_path"],
+        mime_type=meta["mime_type"],
+        file_size=meta["file_size"],
+        width=meta["width"],
+        height=meta["height"],
+    )
+    db.session.add(asset)
+    db.session.commit()
+
+    file_url = url_for("static", filename=asset.storage_path)
+    return editor_upload_response(True, "上传成功", file_url)
+
+
+@admin_bp.route("/media/<int:asset_id>/delete", methods=["POST"])
+@login_required
+def media_delete(asset_id: int):
+    asset = MediaAsset.query.get_or_404(asset_id)
+    abs_path = os.path.join(current_app.root_path, "static", asset.storage_path)
+    if os.path.exists(abs_path):
+        os.remove(abs_path)
+    db.session.delete(asset)
+    db.session.commit()
+    flash("图片已删除", "info")
+    return redirect(url_for("admin.media_library"))
 
 
 @admin_bp.route("/posts/autosave", methods=["POST"])

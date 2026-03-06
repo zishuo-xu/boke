@@ -1,5 +1,4 @@
 from datetime import timedelta
-
 from flask import Flask, session
 from flask_login import current_user
 
@@ -24,6 +23,10 @@ def create_app():
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=1),
         ADMIN_USERNAMES={"admin"},
+        MEDIA_UPLOAD_SUBDIR="uploads/media",
+        MEDIA_MAX_BYTES=5 * 1024 * 1024,
+        MEDIA_MAX_DIMENSION=1920,
+        MEDIA_JPEG_QUALITY=82,
     )
 
     db.init_app(app)

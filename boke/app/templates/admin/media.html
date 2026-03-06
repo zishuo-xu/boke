@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}媒体库{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 page-headline">
+  <h2 class="mb-0">媒体库</h2>
+  <div class="action-group">
+    <a class="btn btn-primary" href="{{ url_for('admin.post_new') }}">去写文章</a>
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.dashboard') }}">返回看板</a>
+  </div>
+</div>
+
+<div class="row g-3">
+  {% for asset in assets %}
+  <div class="col-sm-6 col-md-4 col-lg-3">
+    <div class="card h-100">
+      <img src="{{ url_for('static', filename=asset.storage_path) }}" class="card-img-top" alt="{{ asset.filename }}" style="height: 180px; object-fit: cover;">
+      <div class="card-body">
+        <div class="small text-muted mb-1">{{ asset.created_at.strftime('%Y-%m-%d %H:%M') }}</div>
+        <div class="small text-break mb-2">{{ asset.filename }}</div>
+        <div class="small text-muted mb-2">{{ (asset.file_size / 1024)|round(1) }} KB · {{ asset.width }}x{{ asset.height }}</div>
+        <div class="d-grid gap-2">
+          <button class="btn btn-sm btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText('{{ url_for('static', filename=asset.storage_path, _external=True) }}')">复制图片地址</button>
+          <form method="post" action="{{ url_for('admin.media_delete', asset_id=asset.id) }}" onsubmit="return confirm('确认删除这张图片？')">
+            <button class="btn btn-sm btn-outline-danger w-100" type="submit">删除</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% else %}
+  <div class="col-12"><div class="alert alert-info">媒体库为空，去编辑器上传第一张图片吧。</div></div>
+  {% endfor %}
+</div>
+
+{% if pagination.pages > 1 %}
+<nav class="mt-4"><ul class="pagination">
+  {% for p in pagination.iter_pages() %}
+    {% if p %}
+    <li class="page-item {% if p == pagination.page %}active{% endif %}"><a class="page-link" href="?page={{ p }}">{{ p }}</a></li>
+    {% else %}
+    <li class="page-item disabled"><span class="page-link">…</span></li>
+    {% endif %}
+  {% endfor %}
+</ul></nav>
+{% endif %}
+{% endblock %}

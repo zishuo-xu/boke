@@ -51,7 +51,10 @@
       <textarea class="form-control" rows="2" name="summary" id="summary">{{ draft.summary if draft else (post.summary if post else '') }}</textarea>
     </div>
     <div class="col-12">
-      <label class="form-label">Markdown内容</label>
+      <div class="d-flex justify-content-between align-items-center">
+        <label class="form-label mb-0">Markdown内容</label>
+        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.media_library') }}" target="_blank">打开媒体库</a>
+      </div>
       <div id="post-editor">
         <textarea style="display:none;" name="content" id="content" required>{{ draft.content if draft else (post.content if post else '') }}</textarea>
       </div>
@@ -107,4 +110,5 @@
 <script src="{{ url_for('static', filename='js/admin_editor.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin_draft_autosave.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin_quick_category.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin_paste_upload.js') }}"></script>
 {% endblock %}
