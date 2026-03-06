@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}版本预览 - {{ post.title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 page-headline">
+  <h2 class="mb-0">版本预览 #{{ version.id }}</h2>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-secondary" href="{{ url_for('admin.post_edit', post_id=post.id) }}">返回编辑页</a>
+    <form method="post" action="{{ url_for('admin.post_rollback', post_id=post.id, version_id=version.id) }}" onsubmit="return confirm('确认回滚到该版本？')">
+      <button class="btn btn-primary" type="submit">回滚到此版本</button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-4">
+  <aside class="col-lg-3">
+    <div class="card sticky-toc">
+      <div class="card-header">版本信息</div>
+      <div class="card-body small">
+        <div class="mb-2"><strong>所属文章：</strong>{{ post.title }}</div>
+        <div class="mb-2"><strong>版本ID：</strong>#{{ version.id }}</div>
+        <div class="mb-2"><strong>创建时间：</strong>{{ version.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        <div class="mb-2"><strong>操作人：</strong>{{ version.editor.username if version.editor else '-' }}</div>
+        <div class="mb-2"><strong>状态：</strong>{{ '已发布' if version.status == 1 else '草稿' }}</div>
+        <div class="mb-2"><strong>分类：</strong>{{ version.category.name if version.category else '未分类' }}</div>
+        <div class="mb-2"><strong>标签：</strong>{{ version.tags_text or '无' }}</div>
+        <div><strong>说明：</strong>{{ version.version_note }}</div>
+      </div>
+    </div>
+    <div class="card mt-3 d-none d-lg-block">
+      <div class="card-header">目录预览</div>
+      <div class="card-body toc-body">{{ toc_html|safe }}</div>
+    </div>
+  </aside>
+
+  <main class="col-lg-9">
+    <article class="card article-card">
+      <div class="card-body">
+        <h1 class="h3">{{ version.title }}</h1>
+        <p class="text-muted small">这是历史版本快照，仅供预览，不代表当前线上内容。</p>
+        <hr>
+        <div class="markdown-body">{{ rendered_html|safe }}</div>
+      </div>
+    </article>
+  </main>
+</div>
+{% endblock %}

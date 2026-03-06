@@ -34,6 +34,13 @@
         <option value="{{ category.id }}" {% if selected_category == category.id %}selected{% endif %}>{{ category.name }}</option>
         {% endfor %}
       </select>
+      {% if not post %}
+      <div class="input-group mt-2">
+        <input class="form-control" id="quick_category_name" placeholder="快速新增分类">
+        <button class="btn btn-outline-secondary" type="button" id="quick_category_add_btn">新增</button>
+      </div>
+      <div class="small text-muted mt-1" id="quick_category_status">可在此快速新增并自动选中分类</div>
+      {% endif %}
     </div>
     <div class="col-md-6">
       <label class="form-label">标签（英文逗号分隔）</label>
@@ -77,9 +84,12 @@
           <td>{{ v.version_note }}</td>
           <td>{{ v.editor.username if v.editor else '-' }}</td>
           <td>
-            <form method="post" action="{{ url_for('admin.post_rollback', post_id=post.id, version_id=v.id) }}" onsubmit="return confirm('确认回滚到该版本？')">
-              <button class="btn btn-sm btn-outline-primary" type="submit">回滚到此版本</button>
-            </form>
+            <div class="d-flex gap-2">
+              <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('admin.post_version_preview', post_id=post.id, version_id=v.id) }}" target="_blank">预览</a>
+              <form method="post" action="{{ url_for('admin.post_rollback', post_id=post.id, version_id=v.id) }}" onsubmit="return confirm('确认回滚到该版本？')">
+                <button class="btn btn-sm btn-outline-primary" type="submit">回滚</button>
+              </form>
+            </div>
           </td>
         </tr>
         {% else %}
@@ -96,4 +106,5 @@
 <script src="https://cdn.jsdelivr.net/npm/editor.md@1.5.0/editormd.min.js"></script>
 <script src="{{ url_for('static', filename='js/admin_editor.js') }}"></script>
 <script src="{{ url_for('static', filename='js/admin_draft_autosave.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin_quick_category.js') }}"></script>
 {% endblock %}

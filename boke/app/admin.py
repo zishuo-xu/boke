@@ -4,7 +4,7 @@ from flask_login import current_user, login_required, logout_user
 from .extensions import db
 from .models import Category, Post, PostDraft, PostVersion, Tag
 from .permissions import is_admin_user
-from .utils import auto_summary
+from .utils import auto_summary, render_markdown
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -238,6 +238,21 @@ def post_rollback(post_id: int, version_id: int):
     return redirect(url_for("admin.post_edit", post_id=post.id))
 
 
+@admin_bp.route("/posts/<int:post_id>/versions/<int:version_id>")
+@login_required
+def post_version_preview(post_id: int, version_id: int):
+    post = Post.query.get_or_404(post_id)
+    version = PostVersion.query.filter_by(id=version_id, post_id=post.id).first_or_404()
+    rendered_html, toc_html = render_markdown(version.content)
+    return render_template(
+        "admin/post_version_preview.html",
+        post=post,
+        version=version,
+        rendered_html=rendered_html,
+        toc_html=toc_html,
+    )
+
+
 @admin_bp.route("/categories", methods=["GET", "POST"])
 @login_required
 def categories():
@@ -256,6 +271,37 @@ def categories():
 
     categories_list = Category.query.order_by(Category.sort.asc(), Category.id.asc()).all()
     return render_template("admin/categories.html", categories=categories_list)
+
+
+@admin_bp.route("/categories/quick-add", methods=["POST"])
+@login_required
+def category_quick_add():
+    data = request.get_json(silent=True) or {}
+    name = (data.get("name") or "").strip()
+    sort = data.get("sort", 0)
+
+    if not name:
+        return jsonify({"ok": False, "message": "分类名称不能为空"}), 400
+
+    existed = Category.query.filter_by(name=name).first()
+    if existed:
+        return jsonify(
+            {
+                "ok": False,
+                "message": "分类已存在",
+                "category": {"id": existed.id, "name": existed.name},
+            }
+        ), 409
+
+    try:
+        sort_value = int(sort)
+    except (TypeError, ValueError):
+        sort_value = 0
+
+    category = Category(name=name, sort=sort_value)
+    db.session.add(category)
+    db.session.commit()
+    return jsonify({"ok": True, "category": {"id": category.id, "name": category.name}})
 
 
 @admin_bp.route("/categories/<int:category_id>/delete", methods=["POST"])
