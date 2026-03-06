@@ -43,10 +43,25 @@ def dashboard():
 @login_required
 def posts():
     page = request.args.get("page", 1, type=int)
-    pagination = Post.query.order_by(Post.created_at.desc()).paginate(
-        page=page, per_page=15, error_out=False
+    status = request.args.get("status", "active", type=str)
+
+    query = Post.query
+    if status == "published":
+        query = query.filter(Post.status == Post.STATUS_PUBLISHED)
+    elif status == "draft":
+        query = query.filter(Post.status == Post.STATUS_DRAFT)
+    elif status == "trash":
+        query = query.filter(Post.status == Post.STATUS_TRASH)
+    elif status == "all":
+        pass
+    else:
+        status = "active"
+        query = query.filter(Post.status != Post.STATUS_TRASH)
+
+    pagination = query.order_by(Post.created_at.desc()).paginate(page=page, per_page=15, error_out=False)
+    return render_template(
+        "admin/posts.html", pagination=pagination, posts=pagination.items, status_filter=status
     )
-    return render_template("admin/posts.html", pagination=pagination, posts=pagination.items)
 
 
 def parse_tags(raw_tags: str):
@@ -256,10 +271,51 @@ def post_edit(post_id: int):
 @login_required
 def post_delete(post_id: int):
     post = Post.query.get_or_404(post_id)
+    if post.status == Post.STATUS_TRASH:
+        flash("该文章已在回收站", "warning")
+        return redirect(url_for("admin.posts", status="trash"))
+
+    snapshot_post(post, current_user.id, "移入回收站前")
+    post.status = Post.STATUS_TRASH
+    db.session.commit()
+    snapshot_post(post, current_user.id, "已移入回收站")
+    db.session.commit()
+    flash("文章已移入回收站", "info")
+    return redirect(url_for("admin.posts"))
+
+
+@admin_bp.route("/posts/<int:post_id>/restore", methods=["POST"])
+@login_required
+def post_restore(post_id: int):
+    post = Post.query.get_or_404(post_id)
+    if post.status != Post.STATUS_TRASH:
+        flash("仅回收站文章可恢复", "warning")
+        return redirect(url_for("admin.posts"))
+
+    snapshot_post(post, current_user.id, "恢复前备份")
+    post.status = Post.STATUS_DRAFT
+    db.session.commit()
+    snapshot_post(post, current_user.id, "已从回收站恢复为草稿")
+    db.session.commit()
+    flash("文章已恢复为草稿", "success")
+    return redirect(url_for("admin.posts", status="trash"))
+
+
+@admin_bp.route("/posts/<int:post_id>/destroy", methods=["POST"])
+@login_required
+def post_destroy(post_id: int):
+    post = Post.query.get_or_404(post_id)
+    if post.status != Post.STATUS_TRASH:
+        flash("请先将文章移入回收站，再执行彻底删除", "warning")
+        return redirect(url_for("admin.posts"))
+
+    PostVersion.query.filter_by(post_id=post.id).delete(synchronize_session=False)
+    PostDraft.query.filter_by(post_id=post.id).delete(synchronize_session=False)
+    post.tags = []
     db.session.delete(post)
     db.session.commit()
-    flash("文章已删除", "info")
-    return redirect(url_for("admin.posts"))
+    flash("文章已彻底删除", "info")
+    return redirect(url_for("admin.posts", status="trash"))
 
 
 @admin_bp.route("/media")

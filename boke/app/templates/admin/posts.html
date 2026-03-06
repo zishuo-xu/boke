@@ -5,6 +5,17 @@
   <h2 class="mb-0">文章管理</h2>
   <a class="btn btn-primary" href="{{ url_for('admin.post_new') }}">新建文章</a>
 </div>
+
+<div class="mb-3">
+  <div class="btn-group" role="group">
+    <a class="btn btn-sm {% if status_filter == 'active' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='active') }}">非回收站</a>
+    <a class="btn btn-sm {% if status_filter == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='all') }}">全部</a>
+    <a class="btn btn-sm {% if status_filter == 'published' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='published') }}">已发布</a>
+    <a class="btn btn-sm {% if status_filter == 'draft' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='draft') }}">草稿</a>
+    <a class="btn btn-sm {% if status_filter == 'trash' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='trash') }}">回收站</a>
+  </div>
+</div>
+
 <div class="card table-card">
 <div class="card-body table-responsive">
 <table class="table table-striped align-middle mb-0">
@@ -15,13 +26,26 @@
       <td>{{ post.id }}</td>
       <td>{{ post.title }}</td>
       <td>{{ post.category.name if post.category else '-' }}</td>
-      <td><span class="badge {% if post.status == 1 %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ '已发布' if post.status == 1 else '草稿' }}</span></td>
+      <td>
+        <span class="badge {% if post.status == 1 %}text-bg-success{% elif post.status == 2 %}text-bg-secondary{% else %}text-bg-warning{% endif %}">
+          {{ '已发布' if post.status == 1 else ('回收站' if post.status == 2 else '草稿') }}
+        </span>
+      </td>
       <td>{{ post.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
       <td>
+        {% if post.status != 2 %}
         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('admin.post_edit', post_id=post.id) }}">编辑</a>
-        <form class="d-inline" method="post" action="{{ url_for('admin.post_delete', post_id=post.id) }}" onsubmit="return confirm('确认删除该文章？')">
-          <button class="btn btn-sm btn-outline-danger" type="submit">删除</button>
+        <form class="d-inline" method="post" action="{{ url_for('admin.post_delete', post_id=post.id) }}" onsubmit="return confirm('确认将该文章移入回收站？')">
+          <button class="btn btn-sm btn-outline-danger" type="submit">移入回收站</button>
         </form>
+        {% else %}
+        <form class="d-inline" method="post" action="{{ url_for('admin.post_restore', post_id=post.id) }}" onsubmit="return confirm('确认恢复该文章为草稿？')">
+          <button class="btn btn-sm btn-outline-primary" type="submit">恢复</button>
+        </form>
+        <form class="d-inline" method="post" action="{{ url_for('admin.post_destroy', post_id=post.id) }}" onsubmit="return confirm('确认彻底删除？此操作不可恢复。')">
+          <button class="btn btn-sm btn-outline-danger" type="submit">彻底删除</button>
+        </form>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}

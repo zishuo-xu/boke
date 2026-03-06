@@ -48,6 +48,7 @@ class Tag(TimestampMixin, db.Model):
 class Post(TimestampMixin, db.Model):
     STATUS_DRAFT = 0
     STATUS_PUBLISHED = 1
+    STATUS_TRASH = 2
 
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(100), nullable=False)

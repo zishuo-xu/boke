@@ -23,7 +23,9 @@
     {% for post in latest_posts %}
     <li class="list-group-item d-flex justify-content-between">
       <a href="{{ url_for('admin.post_edit', post_id=post.id) }}">{{ post.title }}</a>
-      <span class="badge {% if post.status == 1 %}text-bg-success{% else %}text-bg-warning{% endif %}">{{ '已发布' if post.status == 1 else '草稿' }}</span>
+      <span class="badge {% if post.status == 1 %}text-bg-success{% elif post.status == 2 %}text-bg-secondary{% else %}text-bg-warning{% endif %}">
+        {{ '已发布' if post.status == 1 else ('回收站' if post.status == 2 else '草稿') }}
+      </span>
     </li>
     {% else %}
     <li class="list-group-item text-muted">暂无数据</li>
