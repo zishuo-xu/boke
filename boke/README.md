@@ -15,6 +15,26 @@ flask --app run.py run
 
 默认管理员账号：`admin`  密码：`admin123`
 
+## Docker 快速部署
+
+```bash
+cd /Users/xuzishuo/ai-work/boke
+docker compose up -d --build
+```
+
+访问地址：
+- `http://127.0.0.1:5000`
+
+默认会自动初始化数据库并创建管理员账号（可通过 `docker-compose.yml` 环境变量修改）：
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+- `ADMIN_USERNAMES`
+- `SECRET_KEY`
+
+数据持久化目录：
+- `./docker-data/instance`（SQLite 数据库）
+- `./docker-data/uploads`（上传图片）
+
 ## 已实现能力
 
 - 前台：首页列表分页、文章详情 Markdown 渲染、目录导航、上一篇/下一篇、搜索（标题/摘要/正文）、分类与标签筛选、侧边栏最新文章/统计/标签云

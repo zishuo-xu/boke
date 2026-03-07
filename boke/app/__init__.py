@@ -1,4 +1,5 @@
 from datetime import timedelta
+import os
 from flask import Flask, session
 from flask_login import current_user
 
@@ -16,13 +17,16 @@ def load_user(user_id: str):
 
 
 def create_app():
+    admin_names_raw = os.getenv("ADMIN_USERNAMES", "admin")
+    admin_names = {name.strip() for name in admin_names_raw.split(",") if name.strip()} or {"admin"}
+
     app = Flask(__name__)
     app.config.update(
-        SECRET_KEY="dev-secret-key-change-me",
-        SQLALCHEMY_DATABASE_URI="sqlite:///blog.db",
+        SECRET_KEY=os.getenv("SECRET_KEY", "dev-secret-key-change-me"),
+        SQLALCHEMY_DATABASE_URI=os.getenv("SQLALCHEMY_DATABASE_URI", "sqlite:///blog.db"),
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         PERMANENT_SESSION_LIFETIME=timedelta(hours=1),
-        ADMIN_USERNAMES={"admin"},
+        ADMIN_USERNAMES=admin_names,
         MEDIA_UPLOAD_SUBDIR="uploads/media",
         MEDIA_MAX_BYTES=5 * 1024 * 1024,
         MEDIA_MAX_DIMENSION=1920,
