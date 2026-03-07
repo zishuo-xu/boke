@@ -43,7 +43,7 @@ def dashboard():
 @login_required
 def posts():
     page = request.args.get("page", 1, type=int)
-    status = request.args.get("status", "active", type=str)
+    status = request.args.get("status", "all", type=str)
 
     query = Post.query
     if status == "published":
@@ -55,8 +55,7 @@ def posts():
     elif status == "all":
         pass
     else:
-        status = "active"
-        query = query.filter(Post.status != Post.STATUS_TRASH)
+        status = "all"
 
     pagination = query.order_by(Post.created_at.desc()).paginate(page=page, per_page=15, error_out=False)
     return render_template(
@@ -177,7 +176,7 @@ def post_new():
         title = request.form.get("title", "").strip()
         content = request.form.get("content", "").strip()
         summary = request.form.get("summary", "").strip()
-        status = request.form.get("status", "0")
+        action = request.form.get("action", "draft")
         category_id = request.form.get("category_id", type=int)
         raw_tags = request.form.get("tags", "")
 
@@ -193,7 +192,7 @@ def post_new():
             title=title,
             content=content,
             summary=summary or auto_summary(content),
-            status=Post.STATUS_PUBLISHED if status == "1" else Post.STATUS_DRAFT,
+            status=Post.STATUS_PUBLISHED if action == "publish" else Post.STATUS_DRAFT,
             category_id=category_id,
         )
         post.tags = parse_tags(raw_tags)
@@ -230,9 +229,8 @@ def post_edit(post_id: int):
         post.title = request.form.get("title", "").strip()
         post.content = request.form.get("content", "").strip()
         post.summary = request.form.get("summary", "").strip() or auto_summary(post.content)
-        post.status = (
-            Post.STATUS_PUBLISHED if request.form.get("status", "0") == "1" else Post.STATUS_DRAFT
-        )
+        action = request.form.get("action", "draft")
+        post.status = Post.STATUS_PUBLISHED if action == "publish" else Post.STATUS_DRAFT
         post.category_id = request.form.get("category_id", type=int)
         post.tags = parse_tags(request.form.get("tags", ""))
 

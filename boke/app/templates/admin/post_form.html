@@ -12,18 +12,11 @@
 <div class="card-body">
 <form method="post">
   <input type="hidden" id="post_id" value="{{ post.id if post else '' }}">
+  <input type="hidden" id="current_status" value="{{ draft.status if draft else (post.status if post else 0) }}">
   <div class="row g-3">
-    <div class="col-md-8">
+    <div class="col-12">
       <label class="form-label">标题</label>
       <input class="form-control" name="title" id="title" value="{{ draft.title if draft else (post.title if post else '') }}" required>
-    </div>
-    <div class="col-md-4">
-      <label class="form-label">状态</label>
-      {% set selected_status = draft.status if draft else (post.status if post else 0) %}
-      <select class="form-select" name="status" id="status">
-        <option value="0" {% if selected_status == 0 %}selected{% endif %}>草稿</option>
-        <option value="1" {% if selected_status == 1 %}selected{% endif %}>发布</option>
-      </select>
     </div>
     <div class="col-md-6">
       <label class="form-label">分类</label>
@@ -64,7 +57,8 @@
     </div>
   </div>
   <div class="mt-3">
-    <button class="btn btn-primary" type="submit">保存</button>
+    <button class="btn btn-outline-secondary" type="submit" name="action" value="draft">保存草稿</button>
+    <button class="btn btn-primary" type="submit" name="action" value="publish">发布文章</button>
     <a class="btn btn-outline-secondary" href="{{ url_for('admin.posts') }}">返回</a>
   </div>
 </form>

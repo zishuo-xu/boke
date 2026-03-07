@@ -8,7 +8,6 @@
 
 <div class="mb-3">
   <div class="btn-group" role="group">
-    <a class="btn btn-sm {% if status_filter == 'active' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='active') }}">非回收站</a>
     <a class="btn btn-sm {% if status_filter == 'all' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='all') }}">全部</a>
     <a class="btn btn-sm {% if status_filter == 'published' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='published') }}">已发布</a>
     <a class="btn btn-sm {% if status_filter == 'draft' %}btn-primary{% else %}btn-outline-secondary{% endif %}" href="{{ url_for('admin.posts', status='draft') }}">草稿</a>

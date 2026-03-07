@@ -22,7 +22,7 @@
       title: value(pick("#title")),
       content: getContent(),
       summary: value(pick("#summary")),
-      status: value(pick("#status")) || "0",
+      status: value(pick("#current_status")) || "0",
       category_id: value(pick("#category_id")) || null,
       tags: value(pick("#tags"))
     };
