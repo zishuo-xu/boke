@@ -115,3 +115,13 @@ class MediaAsset(TimestampMixin, db.Model):
     height = db.Column(db.Integer, nullable=False, default=0)
 
     uploader = db.relationship("User")
+
+
+class Comment(TimestampMixin, db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    post_id = db.Column(db.Integer, db.ForeignKey("post.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+    content = db.Column(db.Text, nullable=False)
+
+    post = db.relationship("Post", backref="comments")
+    user = db.relationship("User")

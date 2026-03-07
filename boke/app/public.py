@@ -1,9 +1,9 @@
-from flask import Blueprint, abort, current_app, render_template, request
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, url_for
 from sqlalchemy import func, or_
-from flask_login import current_user
+from flask_login import current_user, login_required
 
 from .extensions import db
-from .models import Category, Post, Tag
+from .models import Category, Comment, Post, Tag
 from .permissions import is_admin_user
 from .utils import highlight_keyword, match_score, render_markdown
 
@@ -85,6 +85,7 @@ def post_detail(post_id: int):
     return render_template(
         "post_detail.html",
         post=post,
+        comments=Comment.query.filter_by(post_id=post.id).order_by(Comment.created_at.asc()).all(),
         rendered_html=rendered_html,
         toc_html=toc_html,
         prev_post=prev_post,
@@ -93,6 +94,45 @@ def post_detail(post_id: int):
         category_stats=category_stats,
         tag_stats=tag_stats,
     )
+
+
+@public_bp.route("/post/<int:post_id>/comments", methods=["POST"])
+@login_required
+def comment_create(post_id: int):
+    post = Post.query.get_or_404(post_id)
+    if not post.is_published and not is_admin_user(
+        current_user, current_app.config.get("ADMIN_USERNAMES", {"admin"})
+    ):
+        abort(404)
+
+    content = (request.form.get("content") or "").strip()
+    if not content:
+        flash("评论内容不能为空", "warning")
+        return redirect(url_for("public.post_detail", post_id=post.id))
+    if len(content) > 2000:
+        flash("评论内容最多 2000 字", "warning")
+        return redirect(url_for("public.post_detail", post_id=post.id))
+
+    comment = Comment(post_id=post.id, user_id=current_user.id, content=content)
+    db.session.add(comment)
+    db.session.commit()
+    flash("评论已发布", "success")
+    return redirect(url_for("public.post_detail", post_id=post.id))
+
+
+@public_bp.route("/comments/<int:comment_id>/delete", methods=["POST"])
+@login_required
+def comment_delete(comment_id: int):
+    comment = Comment.query.get_or_404(comment_id)
+    is_admin = is_admin_user(current_user, current_app.config.get("ADMIN_USERNAMES", {"admin"}))
+    if comment.user_id != current_user.id and not is_admin:
+        abort(403)
+
+    post_id = comment.post_id
+    db.session.delete(comment)
+    db.session.commit()
+    flash("评论已删除", "info")
+    return redirect(url_for("public.post_detail", post_id=post_id))
 
 
 @public_bp.route("/search")

@@ -30,6 +30,42 @@
         </div>
       </div>
     </article>
+
+    <section class="card mt-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>评论（{{ comments|length }}）</span>
+      </div>
+      <div class="card-body">
+        {% if current_user.is_authenticated %}
+        <form method="post" action="{{ url_for('public.comment_create', post_id=post.id) }}">
+          <div class="mb-2">
+            <textarea class="form-control" name="content" rows="3" maxlength="2000" placeholder="写下你的评论..." required></textarea>
+          </div>
+          <button class="btn btn-primary btn-sm" type="submit">发表评论</button>
+        </form>
+        {% else %}
+        <div class="alert alert-light border">登录后可发表评论：<a href="{{ url_for('auth.login', next=request.path) }}">去登录</a></div>
+        {% endif %}
+
+        <hr>
+        {% for c in comments %}
+        <div class="mb-3 pb-3 border-bottom">
+          <div class="d-flex justify-content-between align-items-center">
+            <strong>{{ c.user.username if c.user else '用户' }}</strong>
+            <span class="small text-muted">{{ c.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+          </div>
+          <div class="mt-2">{{ c.content }}</div>
+          {% if current_user.is_authenticated and (current_user.id == c.user_id or is_admin_user) %}
+          <form class="mt-2" method="post" action="{{ url_for('public.comment_delete', comment_id=c.id) }}" onsubmit="return confirm('确认删除该评论？')">
+            <button class="btn btn-sm btn-outline-danger" type="submit">删除评论</button>
+          </form>
+          {% endif %}
+        </div>
+        {% else %}
+        <div class="text-muted">还没有评论，来抢沙发吧。</div>
+        {% endfor %}
+      </div>
+    </section>
   </main>
 </div>
 {% endblock %}

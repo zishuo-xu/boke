@@ -18,9 +18,10 @@ flask --app run.py run
 ## 已实现能力
 
 - 前台：首页列表分页、文章详情 Markdown 渲染、目录导航、上一篇/下一篇、搜索（标题/摘要/正文）、分类与标签筛选、侧边栏最新文章/统计/标签云
+- 互动：登录用户可直接发表评论（无审核），支持评论删除（本人或管理员）
 - 安全：登录鉴权、后台管理员权限隔离、密码哈希存储、Markdown 渲染后 XSS 过滤
 - 后台：文章增删改（Editor.md 双栏实时预览、草稿/发布、自动摘要、分类标签关联）、自动保存草稿、版本历史与回滚、草稿筛选/回收站恢复、分类管理、标签新增/批量删除/合并、图片上传压缩与媒体库、基础数据看板
-- 数据：SQLite + SQLAlchemy 模型（user/category/tag/post/post_tag）
+- 数据：SQLite + SQLAlchemy 模型（user/category/tag/post/post_tag/comment 等）
 
 ## 说明
 
