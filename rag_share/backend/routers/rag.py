@@ -1,4 +1,8 @@
 import random
+import math
+import re
+import os
+import httpx
 from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional
@@ -314,6 +318,41 @@ def generate_vector(text: str, dim: int = 10) -> List[float]:
         return [round(random.uniform(-1, 1), 3) for _ in range(dim)]
 
 
+def generate_answer(prompt: str) -> str:
+    """调用外部 LLM API 生成答案"""
+    api_key = os.getenv("LLM_API_KEY", "sk-KbQXBXrIuBSWSV4ATxOrqEOQVebACLivi22Dmvzjk7lBhdi3")
+    model = os.getenv("LLM_MODEL", "MiniMax-M2.7")
+    base_url = os.getenv("LLM_BASE_URL", "https://newapi.hizui.cn/v1")
+
+    if not api_key:
+        return "LLM API key not configured"
+
+    url = f"{base_url}/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 1000
+    }
+
+    try:
+        response = httpx.post(url, headers=headers, json=payload, timeout=60.0)
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        print(f"LLM API error: {e}")
+        return f"LLM API error: {str(e)}"
+
+
 def cosine_similarity(v1: List[float], v2: List[float]) -> float:
     """Calculate cosine similarity between two vectors"""
     dot = sum(a * b for a, b in zip(v1, v2))
@@ -324,28 +363,111 @@ def cosine_similarity(v1: List[float], v2: List[float]) -> float:
     return round(dot / (norm1 * norm2), 3)
 
 
-def rerank_results(retrieval_results: List[RetrievalResult]) -> List[RerankedResult]:
-    """Simulate reranking - slightly reorder based on random factor"""
-    reranked = []
-    for i, rr in enumerate(retrieval_results):
-        # Simulate reranking by adding small random changes
-        new_rank = i
-        if random.random() > 0.7:
-            # 30% chance to swap with nearby item
-            swap_range = min(2, len(retrieval_results) - 1 - i)
-            if swap_range > 0:
-                swap_idx = i + random.randint(1, swap_range)
-                new_rank = swap_idx
+def rerank_results(retrieval_results: List[RetrievalResult], chunks: List[Chunk], query: str) -> List[RerankedResult]:
+    """
+    使用 BM25 + 向量相似度融合实现真实重排
 
+    原理：
+    1. BM25：基于关键词的传统信息检索算法，衡量 query 中的词在文档中的重要程度
+    2. 向量相似度：之前计算的语义相似度
+    3. 融合：将 BM25 分数和向量相似度加权组合，得到最终相关性分数
+    """
+    # 简单中文分词（基于字符匹配）
+    def tokenize(text: str) -> List[str]:
+        """简单分词：去除标点，按字符 n-gram 切分"""
+        text = re.sub(r'[^\w\u4e00-\u9fff]', '', text)  # 只保留中文和字母数字
+        if len(text) == 0:
+            return []
+        # 2-gram 切分
+        tokens = []
+        for i in range(len(text) - 1):
+            tokens.append(text[i:i+2])
+        return tokens
+
+    # 计算 BM25 分数
+    def bm25_score(doc_tokens: List[str], query_tokens: List[str], avg_doc_len: float, doc_len: int) -> float:
+        """计算单个文档的 BM25 分数"""
+        k1 = 1.5  # 词频饱和参数
+        b = 0.75  # 文档长度归一化参数
+
+        score = 0.0
+        doc_tf = {}
+        for token in doc_tokens:
+            doc_tf[token] = doc_tf.get(token, 0) + 1
+
+        for token in query_tokens:
+            if token not in doc_tf:
+                continue
+            tf = doc_tf[token]
+            # IDF 设为固定值（简化版）
+            idf = math.log((len(chunks) + 0.5) / 0.5 + 1)
+            numerator = tf * (k1 + 1)
+            denominator = tf + k1 * (1 - b + b * (doc_len / avg_doc_len))
+            score += idf * (numerator / denominator)
+
+        return score
+
+    query_tokens = tokenize(query)
+    if not query_tokens:
+        # 无法分词时，返回原排序
+        return [
+            RerankedResult(
+                chunk_id=rr.chunk_id,
+                original_rank=i + 1,
+                new_rank=i + 1,
+                similarity=rr.similarity
+            )
+            for i, rr in enumerate(retrieval_results)
+        ]
+
+    # 获取需要重排的 chunks
+    chunk_map = {c.id: c for c in chunks}
+    target_chunks = [chunk_map[rr.chunk_id] for rr in retrieval_results]
+
+    # 计算每个 chunk 的 BM25 分数
+    doc_tokens_list = [tokenize(c.text) for c in target_chunks]
+    avg_doc_len = sum(len(t) for t in doc_tokens_list) / max(len(doc_tokens_list), 1)
+
+    bm25_scores = []
+    for i, (chunk, tokens) in enumerate(zip(target_chunks, doc_tokens_list)):
+        score = bm25_score(tokens, query_tokens, avg_doc_len, len(tokens))
+        bm25_scores.append(score)
+
+    # 归一化 BM25 分数到 [0, 1]
+    max_bm25 = max(bm25_scores) if max(bm25_scores) > 0 else 1
+    min_bm25 = min(bm25_scores) if bm25_scores else 0
+    bm25_range = max_bm25 - min_bm25 if max_bm25 - min_bm25 > 0 else 1
+
+    # 归一化向量相似度
+    max_sim = max(rr.similarity for rr in retrieval_results) if retrieval_results else 1
+    max_sim = max_sim if max_sim > 0 else 1
+
+    # 融合分数：BM25权重0.4，向量相似度权重0.6
+    bm25_weight = 0.4
+    vec_weight = 0.6
+
+    fused_scores = []
+    for i, rr in enumerate(retrieval_results):
+        norm_bm25 = (bm25_scores[i] - min_bm25) / bm25_range
+        norm_vec = rr.similarity / max_sim
+        fused = bm25_weight * norm_bm25 + vec_weight * norm_vec
+        fused_scores.append(fused)
+
+    # 根据融合分数重新排序
+    indexed = list(enumerate(fused_scores))
+    indexed.sort(key=lambda x: x[1], reverse=True)
+
+    # 构建重排结果
+    reranked = []
+    for new_rank, (orig_idx, _) in enumerate(indexed):
+        rr = retrieval_results[orig_idx]
         reranked.append(RerankedResult(
             chunk_id=rr.chunk_id,
-            original_rank=i + 1,
+            original_rank=orig_idx + 1,
             new_rank=new_rank + 1,
             similarity=rr.similarity
         ))
 
-    # Sort by new_rank
-    reranked.sort(key=lambda x: x.new_rank)
     return reranked
 
 
@@ -408,7 +530,7 @@ async def process_rag(request: ProcessRequest):
     top_chunks = [chunks[i] for i, _ in top_results]
 
     if request.use_rerank:
-        reranked_results = rerank_results(retrieval_results)
+        reranked_results = rerank_results(retrieval_results, chunks, request.query)
         # Reorder chunks based on reranking
         reranked_chunk_ids = [r.chunk_id for r in reranked_results]
         top_chunks = [next(c for c in chunks if c.id == bid) for bid in reranked_chunk_ids]
@@ -416,17 +538,8 @@ async def process_rag(request: ProcessRequest):
     # Step 7: Build prompt
     prompt = build_prompt(request.query, top_chunks, request.top_k)
 
-    # Step 8: Generate answer (mock)
-    answer = f"""根据检索到的上下文信息，我来分析您的问题。
-
-在{len(top_chunks)}个相关文档片段中，最相关的内容提到了相关要点。
-
-示例回答：这个问题涉及到文档中的关键概念。具体来说，RAG流程通过预处理、切片、向量化、检索等步骤，将用户的查询与知识库进行匹配，最终生成准确的回答。
-
-本次检索命中的文档片段：
-{chr(10).join([f"- {c.id}: {c.text[:50]}..." for c in top_chunks])}
-
-请注意，这是一个演示用的模拟回答。"""
+    # Step 8: Generate answer using LLM
+    answer = generate_answer(prompt)
 
     return ProcessResponse(
         preprocessed_text=preprocessed_text,
