@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Chunk } from '../../App'
 
 interface StepVectorizationProps {
@@ -52,14 +53,59 @@ const EXAMPLES = [
   }
 ]
 
-// 可视化向量的热力图
+// 动画向量条可视化
+function AnimatedVectorBars({ vector, maxShow = 32, isDark = true, height = 40 }: { vector: number[], maxShow?: number, isDark?: boolean, height?: number }) {
+  const showVector = vector.slice(0, maxShow)
+
+  return (
+    <div className="flex items-end gap-[2px] h-full">
+      {showVector.map((val, i) => {
+        const absVal = Math.abs(val)
+        const barHeight = Math.max(absVal * height, 4)
+        const isPositive = val > 0
+
+        return (
+          <motion.div
+            key={i}
+            initial={{ height: 0, opacity: 0 }}
+            animate={{
+              height: barHeight,
+              opacity: 1,
+              backgroundColor: isPositive
+                ? `rgba(59, 130, 246, ${0.3 + absVal * 0.7})`
+                : `rgba(239, 68, 68, ${0.3 + absVal * 0.7})`
+            }}
+            transition={{
+              duration: 0.3,
+              delay: i * 0.02,
+              ease: "easeOut"
+            }}
+            style={{ width: '100%', minWidth: '3px', maxWidth: '8px' }}
+            className="rounded-t"
+            title={val.toFixed(4)}
+          />
+        )
+      })}
+      {vector.length > maxShow && (
+        <span className={`text-xs ml-1 self-center ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>
+          +{vector.length - maxShow}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// 彩色热力图小方块
 function VectorHeatmap({ vector, maxShow = 50, isDark = true }: { vector: number[], maxShow?: number, isDark?: boolean }) {
   const showVector = vector.slice(0, maxShow)
   return (
     <div className="flex flex-wrap gap-[2px]">
       {showVector.map((val, i) => (
-        <div
+        <motion.div
           key={i}
+          initial={{ scale: 0, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: i * 0.01, duration: 0.2 }}
           className="w-3 h-3 rounded-sm"
           style={{
             backgroundColor: val > 0
@@ -302,6 +348,43 @@ export default function StepVectorization({ chunks, vectors, queryVector, theme 
             )
           })}
         </div>
+      </div>
+
+      {/* Chunk 向量可视化条 */}
+      <div className={`rounded-lg p-4 border ${isDark ? 'bg-dark-900 border-dark-700' : 'bg-gray-50 border-gray-200'}`}>
+        <div className={`text-xs mb-3 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          Chunk 向量可视化
+          <span className={`ml-2 ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>（条形高度表示值大小，正值蓝色，负值红色）</span>
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          {chunks.slice(0, 4).map((chunk, index) => {
+            const vector = vectors[index] || []
+            return (
+              <motion.div
+                key={chunk.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className={`rounded-lg p-3 border ${isDark ? 'border-dark-700 bg-dark-800/50' : 'border-gray-200 bg-white/50'}`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`text-xs font-mono px-2 py-1 rounded ${isDark ? 'text-blue-400 bg-blue-400/10' : 'text-blue-600 bg-blue-50'}`}>
+                    {chunk.id}
+                  </span>
+                  <span className={`text-xs ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>{vector.length}维</span>
+                </div>
+                <div className="h-12 flex items-end">
+                  <AnimatedVectorBars vector={vector} maxShow={40} isDark={isDark} height={40} />
+                </div>
+              </motion.div>
+            )
+          })}
+        </div>
+        {chunks.length > 4 && (
+          <div className={`text-xs text-center mt-3 ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>
+            还有 {chunks.length - 4} 个 chunk...
+          </div>
+        )}
       </div>
 
       {/* 相似度矩阵热力图 */}

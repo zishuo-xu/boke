@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Chunk } from '../../App'
 
 interface StepChunkingProps {
@@ -91,69 +92,88 @@ export default function StepChunking({ chunks, editedChunks, onChunksChange, the
       </div>
 
       <div className="flex-1 overflow-auto space-y-3">
-        {displayChunks.map((chunk, index) => (
-          <div
-            key={chunk.id}
-            className={`rounded-lg border p-3 ${isDark ? 'bg-dark-900 border-dark-700' : 'bg-gray-50 border-gray-200'}`}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-mono px-2 py-1 rounded ${isDark ? 'text-blue-400 bg-blue-400/10' : 'text-blue-600 bg-blue-50'}`}>
-                  {chunk.id}
-                </span>
-                <span className={`text-xs ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>({chunk.length} 字符)</span>
-              </div>
-              <div className="flex gap-1">
-                {editingId !== chunk.id && (
-                  <>
-                    <button
-                      onClick={() => startEdit(chunk)}
-                      className={`px-2 py-1 text-xs rounded transition-colors ${isDark ? 'text-gray-400 hover:text-white bg-dark-700 hover:bg-dark-600' : 'text-gray-600 hover:text-gray-900 bg-gray-200 hover:bg-gray-300'}`}
-                    >
-                      编辑
-                    </button>
-                    <button
-                      onClick={() => deleteChunk(chunk.id)}
-                      className="px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-red-400/10 rounded hover:bg-red-400/20 transition-colors"
-                    >
-                      删除
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-            {editingId === chunk.id ? (
-              <div className="space-y-2">
-                <textarea
-                  value={editText}
-                  onChange={(e) => setEditText(e.target.value)}
-                  className={`w-full h-24 rounded-lg p-2 text-sm resize-none focus:outline-none focus:border-blue-500 ${isDark ? 'bg-dark-800 border border-blue-500/50 text-gray-200' : 'bg-white border border-blue-300 text-gray-800'}`}
-                  placeholder="输入切片内容..."
-                  autoFocus
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => saveEdit(chunk.id)}
-                    className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
+        <AnimatePresence>
+          {displayChunks.map((chunk, index) => (
+            <motion.div
+              key={chunk.id}
+              initial={{ opacity: 0, y: 20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{
+                duration: 0.3,
+                delay: index * 0.05,
+                ease: "easeOut"
+              }}
+              layout
+              className={`rounded-lg border p-3 ${isDark ? 'bg-dark-900 border-dark-700' : 'bg-gray-50 border-gray-200'}`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: index * 0.05 + 0.2, type: "spring" }}
+                    className={`text-xs font-mono px-2 py-1 rounded ${isDark ? 'text-blue-400 bg-blue-400/10' : 'text-blue-600 bg-blue-50'}`}
                   >
-                    保存
-                  </button>
-                  <button
-                    onClick={cancelEdit}
-                    className={`px-3 py-1 text-xs rounded transition-colors ${isDark ? 'bg-dark-700 text-gray-400 hover:bg-dark-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
-                  >
-                    取消
-                  </button>
+                    {chunk.id}
+                  </motion.span>
+                  <span className={`text-xs ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>({chunk.length} 字符)</span>
+                  {editedChunks && (
+                    <span className="text-xs text-yellow-400">(已编辑)</span>
+                  )}
+                </div>
+                <div className="flex gap-1">
+                  {editingId !== chunk.id && (
+                    <>
+                      <button
+                        onClick={() => startEdit(chunk)}
+                        className={`px-2 py-1 text-xs rounded transition-colors ${isDark ? 'text-gray-400 hover:text-white bg-dark-700 hover:bg-dark-600' : 'text-gray-600 hover:text-gray-900 bg-gray-200 hover:bg-gray-300'}`}
+                      >
+                        编辑
+                      </button>
+                      <button
+                        onClick={() => deleteChunk(chunk.id)}
+                        className="px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-red-400/10 rounded hover:bg-red-400/20 transition-colors"
+                      >
+                        删除
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
-            ) : (
-              <p className={`text-sm whitespace-pre-wrap line-clamp-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-                {chunk.text || <span className={`italic ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>空切片</span>}
-              </p>
-            )}
-          </div>
-        ))}
+
+              {editingId === chunk.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className={`w-full h-24 rounded-lg p-2 text-sm resize-none focus:outline-none focus:border-blue-500 ${isDark ? 'bg-dark-800 border border-blue-500/50 text-gray-200' : 'bg-white border border-blue-300 text-gray-800'}`}
+                    placeholder="输入切片内容..."
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => saveEdit(chunk.id)}
+                      className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors"
+                    >
+                      保存
+                    </button>
+                    <button
+                      onClick={cancelEdit}
+                      className={`px-3 py-1 text-xs rounded transition-colors ${isDark ? 'bg-dark-700 text-gray-400 hover:bg-dark-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}
+                    >
+                      取消
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className={`text-sm whitespace-pre-wrap line-clamp-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+                  {chunk.text || <span className={`italic ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>空切片</span>}
+                </p>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
 
       {displayChunks.length === 0 && (
