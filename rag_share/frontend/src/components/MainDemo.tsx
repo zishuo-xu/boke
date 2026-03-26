@@ -69,6 +69,7 @@ export default function MainDemo({ currentStep, inputData, result, editedChunks,
             retrievalResults={result.retrieval_results}
             rerankedResults={result.reranked_results}
             useRerank={inputData.use_rerank}
+            query={inputData.query}
             theme={theme}
           />
         )
