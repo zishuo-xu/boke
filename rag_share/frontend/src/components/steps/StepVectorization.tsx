@@ -53,44 +53,74 @@ const EXAMPLES = [
   }
 ]
 
-// 动画向量条可视化
-function AnimatedVectorBars({ vector, maxShow = 32, isDark = true, height = 40 }: { vector: number[], maxShow?: number, isDark?: boolean, height?: number }) {
-  const showVector = vector.slice(0, maxShow)
+// 2D 热力图网格可视化 - 替代条形图
+function VectorGrid({ vector, isDark = true, rows = 4, cols = 8 }: { vector: number[], isDark?: boolean, rows?: number, cols?: number }) {
+  const total = rows * cols
+  const showVector = vector.slice(0, total)
+
+  // 归一化到 0-1 范围用于颜色映射
+  const maxAbs = Math.max(...showVector.map(Math.abs), 0.01)
+
+  const cells = showVector.map((val, i) => {
+    const intensity = Math.abs(val) / maxAbs
+    return { val, intensity, index: i }
+  })
 
   return (
-    <div className="flex items-end gap-[2px] h-full">
-      {showVector.map((val, i) => {
-        const absVal = Math.abs(val)
-        const barHeight = Math.max(absVal * height, 4)
-        const isPositive = val > 0
+    <div className="space-y-2">
+      {/* 图例 */}
+      <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(59, 130, 246, 0.9)' }}></div>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>正值</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded" style={{ backgroundColor: 'rgba(239, 68, 68, 0.9)' }}></div>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>负值</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-3 h-3 rounded border" style={{ backgroundColor: isDark ? '#1f2937' : '#f9fafb' }}></div>
+          <span className={isDark ? 'text-gray-400' : 'text-gray-600'}>接近0</span>
+        </div>
+      </div>
 
-        return (
-          <motion.div
-            key={i}
-            initial={{ height: 0, opacity: 0 }}
-            animate={{
-              height: barHeight,
-              opacity: 1,
-              backgroundColor: isPositive
-                ? `rgba(59, 130, 246, ${0.3 + absVal * 0.7})`
-                : `rgba(239, 68, 68, ${0.3 + absVal * 0.7})`
-            }}
-            transition={{
-              duration: 0.3,
-              delay: i * 0.02,
-              ease: "easeOut"
-            }}
-            style={{ width: '100%', minWidth: '3px', maxWidth: '8px' }}
-            className="rounded-t"
-            title={val.toFixed(4)}
-          />
-        )
-      })}
-      {vector.length > maxShow && (
-        <span className={`text-xs ml-1 self-center ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>
-          +{vector.length - maxShow}
-        </span>
-      )}
+      {/* 网格 */}
+      <div
+        className="grid gap-[2px] rounded-lg p-2 overflow-hidden"
+        style={{
+          gridTemplateColumns: `repeat(${cols}, 1fr)`,
+          backgroundColor: isDark ? 'rgba(31, 41, 55, 0.5)' : 'rgba(249, 250, 251, 0.8)'
+        }}
+      >
+        {cells.map(({ val, intensity }, i) => {
+          const isPositive = val > 0
+          const bgColor = isPositive
+            ? `rgba(59, 130, 246, ${0.15 + intensity * 0.85})`
+            : `rgba(239, 68, 68, ${0.15 + intensity * 0.85})`
+
+          return (
+            <motion.div
+              key={i}
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: i * 0.015, duration: 0.2 }}
+              className="aspect-square rounded-sm flex items-center justify-center text-[8px] font-mono"
+              style={{
+                backgroundColor: bgColor,
+                color: intensity > 0.5 ? 'white' : (isDark ? '#9ca3af' : '#6b7280')
+              }}
+              title={`[${i}]: ${val.toFixed(4)}`}
+            >
+              {val > 0 ? '+' : ''}{val.toFixed(2)}
+            </motion.div>
+          )
+        })}
+      </div>
+
+      {/* 数值范围 */}
+      <div className={`text-xs text-center ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>
+        值范围: [{Math.min(...showVector).toFixed(3)}, {Math.max(...showVector).toFixed(3)}] | 显示前{total}维，共{vector.length}维
+      </div>
     </div>
   )
 }
@@ -373,9 +403,7 @@ export default function StepVectorization({ chunks, vectors, queryVector, theme 
                   </span>
                   <span className={`text-xs ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>{vector.length}维</span>
                 </div>
-                <div className="h-12 flex items-end">
-                  <AnimatedVectorBars vector={vector} maxShow={40} isDark={isDark} height={40} />
-                </div>
+                <VectorGrid vector={vector} isDark={isDark} rows={4} cols={8} />
               </motion.div>
             )
           })}
