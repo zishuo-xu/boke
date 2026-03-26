@@ -347,7 +347,12 @@ def generate_answer(prompt: str) -> str:
         response = httpx.post(url, headers=headers, json=payload, timeout=60.0)
         response.raise_for_status()
         data = response.json()
-        return data["choices"][0]["message"]["content"]
+        # MiniMax 推理模型返回 reasoning_content，普通模型返回 content
+        message = data["choices"][0]["message"]
+        content = message.get("content", "") or message.get("reasoning_content", "")
+        if not content:
+            content = message.get("reasoning_details", [{}])[0].get("text", "") if message.get("reasoning_details") else ""
+        return content
     except Exception as e:
         print(f"LLM API error: {e}")
         return f"LLM API error: {str(e)}"
