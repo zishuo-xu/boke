@@ -1,0 +1,40 @@
+#!/usr/bin/expect -f
+# RAG Visualization 部署脚本
+
+set SERVER_IP "47.107.187.18"
+set SERVER_USER "root"
+set SERVER_PASS "Y/_c3t#&#n5a4!G"
+set PROJECT_DIR "/root/rag_share"
+
+spawn scp -o StrictHostKeyChecking=no -r .. $SERVER_USER@$SERVER_IP:$PROJECT_DIR
+expect {
+    "password:" {
+        send "$SERVER_PASS\r"
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+}
+expect eof
+
+spawn ssh -o StrictHostKeyChecking=no $SERVER_USER@$SERVER_IP
+expect {
+    "password:" {
+        send "$SERVER_PASS\r"
+    }
+    "yes/no" {
+        send "yes\r"
+        exp_continue
+    }
+}
+expect "~#"
+
+send "cd $PROJECT_DIR\r"
+send "if ! command -v docker &> /dev/null; then curl -fsSL https://get.docker.com | sh; fi\r"
+send "docker-compose up -d --build\r"
+expect "done"
+send "docker-compose ps\r"
+send "echo '部署完成，访问 http://$SERVER_IP:3000'\r"
+send "exit\r"
+expect eof

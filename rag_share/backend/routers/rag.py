@@ -320,7 +320,7 @@ def generate_vector(text: str, dim: int = 10) -> List[float]:
 
 def generate_answer(prompt: str) -> str:
     """调用外部 LLM API 生成答案"""
-    api_key = os.getenv("LLM_API_KEY", "sk-KbQXBXrIuBSWSV4ATxOrqEOQVebACLivi22Dmvzjk7lBhdi3")
+    api_key = os.getenv("LLM_API_KEY")
     model = os.getenv("LLM_MODEL", "MiniMax-M2.7")
     base_url = os.getenv("LLM_BASE_URL", "https://newapi.hizui.cn/v1")
 
