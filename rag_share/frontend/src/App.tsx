@@ -15,6 +15,8 @@ export interface Chunk {
 export interface RetrievalResult {
   chunk_id: string
   similarity: number
+  vector_score?: number
+  bm25_score?: number
 }
 
 export interface RerankedResult {

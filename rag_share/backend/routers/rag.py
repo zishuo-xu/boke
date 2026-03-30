@@ -33,6 +33,8 @@ class Chunk(BaseModel):
 class RetrievalResult(BaseModel):
     chunk_id: str
     similarity: float
+    vector_score: Optional[float] = None
+    bm25_score: Optional[float] = None
 
 
 class RerankedResult(BaseModel):
@@ -541,25 +543,40 @@ async def process_rag(request: ProcessRequest):
                     db.insert_chunk(chunk.id, chunk.text, chunk.length, vec)
 
                 # 根据模式选择检索方式
+                chunk_map = {c.id: c for c in chunks}
+
                 if request.use_hybrid_search:
                     # 混合检索
-                    search_results = db.hybrid_search(query_vector, request.query, request.top_k)
+                    search_data = db.hybrid_search(query_vector, request.query, request.top_k)
                     search_mode = "hybrid"
+
+                    # 构建包含向量分数和 BM25 分数的结果
+                    vector_dict = {v[0]: v[1] for v in search_data["vector_results"]}
+                    bm25_dict = {b[0]: b[1] for b in search_data["bm25_results"]}
+
+                    retrieval_results = []
+                    for chunk_id, fused_score in search_data["fused_results"]:
+                        if chunk_id in chunk_map:
+                            retrieval_results.append(RetrievalResult(
+                                chunk_id=chunk_id,
+                                similarity=fused_score,
+                                vector_score=vector_dict.get(chunk_id),
+                                bm25_score=bm25_dict.get(chunk_id)
+                            ))
+
+                    top_chunks = [chunk_map[cr.chunk_id] for cr in retrieval_results]
                 else:
                     # 纯向量检索
                     search_results = db.vector_search(query_vector, request.top_k)
                     search_mode = "vector"
 
-                # 转换为 RetrievalResult
-                chunk_map = {c.id: c for c in chunks}
-                retrieval_results = [
-                    RetrievalResult(chunk_id=chunk_id, similarity=sim)
-                    for chunk_id, sim in search_results
-                    if chunk_id in chunk_map
-                ]
+                    retrieval_results = [
+                        RetrievalResult(chunk_id=chunk_id, similarity=sim, vector_score=sim)
+                        for chunk_id, sim in search_results
+                        if chunk_id in chunk_map
+                    ]
 
-                # 获取对应的 chunks（保持 PG 返回的顺序）
-                top_chunks = [chunk_map[cr.chunk_id] for cr in retrieval_results]
+                    top_chunks = [chunk_map[cr.chunk_id] for cr in retrieval_results]
 
             except Exception as e:
                 print(f"PostgreSQL 错误: {e}，回退到内存模式")

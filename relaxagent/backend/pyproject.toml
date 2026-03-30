@@ -1,0 +1,16 @@
+[project]
+name = "relaxagent-backend"
+version = "0.1.0"
+description = "FastAPI backend for RelaxAgent"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.116.1",
+  "httpx>=0.28.1",
+  "pydantic>=2.11.0",
+  "sqlalchemy>=2.0.43",
+  "uvicorn>=0.35.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"

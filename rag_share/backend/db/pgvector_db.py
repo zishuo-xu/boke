@@ -133,7 +133,7 @@ class PGVectorDB:
         query_text: str,
         top_k: int = 5,
         vector_weight: float = 0.6
-    ) -> List[Tuple[str, float]]:
+    ) -> dict:
         """
         混合检索：结合向量相似度和 BM25 关键词匹配
 
@@ -143,7 +143,11 @@ class PGVectorDB:
             top_k: 返回数量
             vector_weight: 向量检索权重 (0-1)，BM25 权重为 1-vector_weight
 
-        返回: [(chunk_id, fused_score), ...]
+        返回: {
+            "fused_results": [(chunk_id, fused_score), ...],
+            "vector_results": [(chunk_id, vector_score), ...],
+            "bm25_results": [(chunk_id, bm25_score), ...]
+        }
         """
         vec_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
@@ -154,15 +158,15 @@ class PGVectorDB:
                 FROM chunk_vectors v
                 ORDER BY v.embedding <=> %s::vector
                 LIMIT %s
-            """, (vec_str, vec_str, top_k * 3))  # 多取一些用于融合
+            """, (vec_str, vec_str, top_k * 3))
 
-            vector_results = {row[0]: float(row[1]) for row in cursor.fetchall()}
+            vector_results = [(row[0], float(row[1])) for row in cursor.fetchall()]
 
             if not vector_results:
-                return []
+                return {"fused_results": [], "vector_results": [], "bm25_results": []}
 
             # 获取对应文档用于 BM25 计算
-            chunk_ids = list(vector_results.keys())
+            chunk_ids = [v[0] for v in vector_results]
             placeholders = ','.join(['%s'] * len(chunk_ids))
             cursor.execute(f"""
                 SELECT id, text FROM document_chunks WHERE id IN ({placeholders})
@@ -177,16 +181,25 @@ class PGVectorDB:
                 return [text[i:i+2] for i in range(len(text) - 1)]
 
             query_tokens = simple_tokenize(query_text)
+
+            # 构建向量结果字典
+            vector_dict = {row[0]: row[1] for row in vector_results}
+
             if not query_tokens:
                 # 无法分词时返回纯向量结果
-                return [(k, v) for k, v in sorted(vector_results.items(), key=lambda x: x[1], reverse=True)[:top_k]]
+                return {
+                    "fused_results": vector_results[:top_k],
+                    "vector_results": vector_results,
+                    "bm25_results": []
+                }
 
             # 计算 BM25 分数
             avg_doc_len = sum(len(d) for d in docs.values()) / max(len(docs), 1)
             k1, b = 1.5, 0.75
 
-            bm25_scores = {}
-            for chunk_id, text in docs.items():
+            bm25_results = []
+            for chunk_id in vector_dict.keys():
+                text = docs.get(chunk_id, "")
                 doc_tokens = simple_tokenize(text)
                 doc_tf = {}
                 for token in doc_tokens:
@@ -199,22 +212,30 @@ class PGVectorDB:
                     tf = doc_tf[token]
                     idf = 1.0  # 简化 IDF
                     score += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (len(text) / avg_doc_len)))
-                bm25_scores[chunk_id] = score
+                bm25_results.append((chunk_id, score))
 
             # 归一化分数
-            max_vec = max(vector_results.values()) if vector_results else 1
-            max_bm25 = max(bm25_scores.values()) if bm25_scores else 1
+            max_vec = max(vector_dict.values()) if vector_dict else 1
+            max_bm25 = max(s[1] for s in bm25_results) if bm25_results else 1
 
             # RRF 融合
-            fused_scores = {}
-            for chunk_id in vector_results:
-                norm_vec = vector_results[chunk_id] / max_vec if max_vec > 0 else 0
-                norm_bm25 = bm25_scores.get(chunk_id, 0) / max_bm25 if max_bm25 > 0 else 0
-                fused_scores[chunk_id] = vector_weight * norm_vec + (1 - vector_weight) * norm_bm25
+            fused_results = []
+            for chunk_id in vector_dict.keys():
+                vec_score = vector_dict[chunk_id]
+                bm25_score = next((s[1] for s in bm25_results if s[0] == chunk_id), 0)
+                norm_vec = vec_score / max_vec if max_vec > 0 else 0
+                norm_bm25 = bm25_score / max_bm25 if max_bm25 > 0 else 0
+                fused_score = vector_weight * norm_vec + (1 - vector_weight) * norm_bm25
+                fused_results.append((chunk_id, fused_score))
 
             # 返回 Top-K
-            sorted_results = sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
-            return sorted_results[:top_k]
+            fused_results.sort(key=lambda x: x[1], reverse=True)
+
+            return {
+                "fused_results": fused_results[:top_k],
+                "vector_results": vector_results,
+                "bm25_results": sorted(bm25_results, key=lambda x: x[1], reverse=True)
+            }
 
     def get_chunks_by_ids(self, chunk_ids: List[str]) -> List[dict]:
         """根据 ID 列表获取 chunks"""

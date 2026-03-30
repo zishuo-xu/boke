@@ -59,6 +59,7 @@ export default function MainDemo({ currentStep, inputData, result, editedChunks,
             retrievalResults={result.retrieval_results}
             queryVector={result.query_vector}
             topK={inputData.top_k}
+            searchMode={result.search_mode}
             theme={theme}
           />
         )
