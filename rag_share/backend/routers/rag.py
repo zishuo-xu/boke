@@ -7,6 +7,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import List, Optional
 
+from db.pgvector_db import PG_CONFIG
+
 router = APIRouter()
 
 
@@ -18,6 +20,8 @@ class ProcessRequest(BaseModel):
     top_k: int = 3
     use_rerank: bool = True
     chunking_strategy: str = "by_chars"  # "by_chars" | "by_sentence" | "by_paragraph"
+    use_pg: bool = False  # 是否使用 PostgreSQL 存储和检索
+    use_hybrid_search: bool = False  # 是否使用混合检索（仅 use_pg=True 时有效）
 
 
 class Chunk(BaseModel):
@@ -47,6 +51,8 @@ class ProcessResponse(BaseModel):
     reranked_results: Optional[List[RerankedResult]] = None
     prompt: str
     answer: str
+    storage_mode: str = "in_memory"  # "in_memory" | "postgresql"
+    search_mode: str = "vector"  # "vector" | "hybrid"
 
 
 def simple_preprocess(text: str) -> str:
@@ -500,7 +506,7 @@ def build_prompt(query: str, chunks: List[Chunk], top_k: int) -> str:
 
 @router.post("/rag/process", response_model=ProcessResponse)
 async def process_rag(request: ProcessRequest):
-    """Process RAG request with mock data"""
+    """Process RAG request with in-memory or PostgreSQL mode"""
 
     # Step 1: Preprocess
     preprocessed_text = simple_preprocess(request.text)
@@ -515,26 +521,96 @@ async def process_rag(request: ProcessRequest):
     query_vector = generate_vector(request.query)
 
     # Step 5: Retrieval (similarity calculation)
-    similarities = []
-    for i, vec in enumerate(vectors):
-        sim = cosine_similarity(query_vector, vec)
-        similarities.append((i, sim))
+    # 确定存储和检索模式
+    storage_mode = "postgresql" if request.use_pg else "in_memory"
+    search_mode = "hybrid" if request.use_hybrid_search else "vector"
 
-    # Sort by similarity descending
-    similarities.sort(key=lambda x: x[1], reverse=True)
+    retrieval_results = []
+    reranked_results = None
+    top_chunks = chunks[:request.top_k]
 
-    # Take top_k
-    top_results = similarities[:request.top_k]
-    retrieval_results = [
-        RetrievalResult(chunk_id=chunks[i].id, similarity=sim)
-        for i, sim in top_results
-    ]
+    if request.use_pg:
+        # PostgreSQL 模式
+        from db import get_db
+
+        db = get_db()
+        if db is not None:
+            try:
+                # 插入 chunks 和 vectors 到 PG
+                for chunk, vec in zip(chunks, vectors):
+                    db.insert_chunk(chunk.id, chunk.text, chunk.length, vec)
+
+                # 根据模式选择检索方式
+                if request.use_hybrid_search:
+                    # 混合检索
+                    search_results = db.hybrid_search(query_vector, request.query, request.top_k)
+                    search_mode = "hybrid"
+                else:
+                    # 纯向量检索
+                    search_results = db.vector_search(query_vector, request.top_k)
+                    search_mode = "vector"
+
+                # 转换为 RetrievalResult
+                chunk_map = {c.id: c for c in chunks}
+                retrieval_results = [
+                    RetrievalResult(chunk_id=chunk_id, similarity=sim)
+                    for chunk_id, sim in search_results
+                    if chunk_id in chunk_map
+                ]
+
+                # 获取对应的 chunks（保持 PG 返回的顺序）
+                top_chunks = [chunk_map[cr.chunk_id] for cr in retrieval_results]
+
+            except Exception as e:
+                print(f"PostgreSQL 错误: {e}，回退到内存模式")
+                storage_mode = "in_memory_fallback"
+                # 回退到内存计算
+                similarities = []
+                for i, vec in enumerate(vectors):
+                    sim = cosine_similarity(query_vector, vec)
+                    similarities.append((i, sim))
+                similarities.sort(key=lambda x: x[1], reverse=True)
+                top_results = similarities[:request.top_k]
+                retrieval_results = [
+                    RetrievalResult(chunk_id=chunks[i].id, similarity=sim)
+                    for i, sim in top_results
+                ]
+                top_chunks = [chunks[i] for i, _ in top_results]
+        else:
+            print("PostgreSQL 不可用，回退到内存模式")
+            storage_mode = "in_memory_fallback"
+            # 回退到内存计算
+            similarities = []
+            for i, vec in enumerate(vectors):
+                sim = cosine_similarity(query_vector, vec)
+                similarities.append((i, sim))
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            top_results = similarities[:request.top_k]
+            retrieval_results = [
+                RetrievalResult(chunk_id=chunks[i].id, similarity=sim)
+                for i, sim in top_results
+            ]
+            top_chunks = [chunks[i] for i, _ in top_results]
+    else:
+        # 内存模式（原有逻辑）
+        similarities = []
+        for i, vec in enumerate(vectors):
+            sim = cosine_similarity(query_vector, vec)
+            similarities.append((i, sim))
+
+        # Sort by similarity descending
+        similarities.sort(key=lambda x: x[1], reverse=True)
+
+        # Take top_k
+        top_results = similarities[:request.top_k]
+        retrieval_results = [
+            RetrievalResult(chunk_id=chunks[i].id, similarity=sim)
+            for i, sim in top_results
+        ]
+        top_chunks = [chunks[i] for i, _ in top_results]
 
     # Step 6: Rerank (if enabled)
-    reranked_results = None
-    top_chunks = [chunks[i] for i, _ in top_results]
-
-    if request.use_rerank:
+    if request.use_rerank and retrieval_results:
         reranked_results = rerank_results(retrieval_results, chunks, request.query)
         # Reorder chunks based on reranking
         reranked_chunk_ids = [r.chunk_id for r in reranked_results]
@@ -554,7 +630,9 @@ async def process_rag(request: ProcessRequest):
         retrieval_results=retrieval_results,
         reranked_results=reranked_results,
         prompt=prompt,
-        answer=answer
+        answer=answer,
+        storage_mode=storage_mode,
+        search_mode=search_mode
     )
 
 
@@ -572,8 +650,53 @@ async def get_steps():
             {"id": 7, "name": "重排", "description": "对召回结果重排序"},
             {"id": 8, "name": "Prompt 组装", "description": "组装最终 Prompt"},
             {"id": 9, "name": "答案生成", "description": "展示最终回答"}
-        ]
+        ],
+        "storage_modes": {
+            "in_memory": "内存模式：向量存储在内存中，重启后丢失",
+            "postgresql": "PostgreSQL 模式：向量持久化到 pgvector 数据库"
+        },
+        "search_modes": {
+            "vector": "纯向量检索：基于余弦相似度的语义搜索",
+            "hybrid": "混合检索：向量检索 + BM25 关键词融合"
+        }
     }
+
+
+@router.get("/rag/pg-status")
+async def get_pg_status():
+    """Check PostgreSQL connection status"""
+    from db import get_db
+
+    db = get_db()
+    if db is not None:
+        try:
+            with db.get_cursor() as cursor:
+                cursor.execute("SELECT version();")
+                version = cursor.fetchone()[0]
+            return {
+                "status": "connected",
+                "version": version,
+                "host": PG_CONFIG["host"],
+                "database": PG_CONFIG["database"]
+            }
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return {"status": "disconnected", "message": "PostgreSQL 不可用或 pgvector 未安装"}
+
+
+@router.post("/rag/pg-clear")
+async def clear_pg_data():
+    """Clear all data from PostgreSQL"""
+    from db import get_db
+
+    db = get_db()
+    if db is not None:
+        try:
+            db.clear_all()
+            return {"status": "success", "message": "PostgreSQL 数据已清空"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    return {"status": "error", "message": "PostgreSQL 不可用"}
 
 
 class EmbedRequest(BaseModel):
