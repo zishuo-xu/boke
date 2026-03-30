@@ -33,6 +33,8 @@ export interface RagProcessResult {
   reranked_results: RerankedResult[] | null
   prompt: string
   answer: string
+  storage_mode?: string
+  search_mode?: string
 }
 
 export interface ProcessRequest {
@@ -43,6 +45,8 @@ export interface ProcessRequest {
   top_k: number
   use_rerank: boolean
   chunking_strategy: string
+  use_pg?: boolean
+  use_hybrid_search?: boolean
 }
 
 export const STEPS = [
@@ -184,7 +188,9 @@ function App() {
       overlap: 10,
       top_k: 3,
       use_rerank: true,
-      chunking_strategy: 'by_chars'
+      chunking_strategy: 'by_chars',
+      use_pg: false,
+      use_hybrid_search: false
     }
   }
 
@@ -260,7 +266,7 @@ function App() {
     dispatch({ type: 'SET_PROCESSING', payload: true })
     setEditedChunks(null)
     try {
-      const response = await axios.post<{ preprocessed_text: string; chunks: Chunk[]; vectors: number[][]; query_vector: number[]; retrieval_results: RetrievalResult[]; reranked_results: RerankedResult[] | null; prompt: string; answer: string }>('/api/rag/process', inputData)
+      const response = await axios.post<RagProcessResult>('/api/rag/process', inputData)
       dispatch({ type: 'SET_RESULT', payload: response.data })
       dispatch({ type: 'GO_TO_STEP', payload: 2 })
     } catch (error) {
