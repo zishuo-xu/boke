@@ -48,7 +48,6 @@ export interface ProcessRequest {
   use_rerank: boolean
   chunking_strategy: string
   use_pg?: boolean
-  use_hybrid_search?: boolean
 }
 
 export const STEPS = [
@@ -191,8 +190,7 @@ function App() {
       top_k: 3,
       use_rerank: true,
       chunking_strategy: 'by_chars',
-      use_pg: false,
-      use_hybrid_search: false
+      use_pg: false
     }
   }
 

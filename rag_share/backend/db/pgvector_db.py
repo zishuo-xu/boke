@@ -28,33 +28,13 @@ PG_CONFIG = {
 
 def chinese_tokenize(text: str) -> str:
     """
-    中文分词：将连续的中文字符串切分成 2-gram
-    PostgreSQL 全文检索需要分词，我们用 2-gram 模拟中文分词
+    中文分词：简单移除非文字内容
+    用于全文检索的文本预处理
     """
-    # 移除非文字内容
-    text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
-    # 移除多余空格
-    text = ' '.join(text.split())
-
-    # 对中文进行 2-gram 切分
-    tokens = []
-    i = 0
-    while i < len(text):
-        # 如果是中文连续字符
-        if '\u4e00' <= text[i] <= '\u9fff':
-            # 中文 2-gram
-            if i + 1 < len(text) and '\u4e00' <= text[i + 1] <= '\u9fff':
-                tokens.append(text[i:i + 2])
-                i += 2
-            else:
-                i += 1
-        else:
-            # 英文/数字按空格切分
-            tokens.append(text[i])
-            i += 1
-
-    # 转换为 PostgreSQL 全文检索查询格式
-    return ' '.join(tokens) if tokens else text
+    import re
+    # 移除非文字内容，只保留中文、英文、数字
+    text = re.sub(r'[^\w\u4e00-\u9fff]', '', text)
+    return text
 
 
 class PGVectorDB:
@@ -128,10 +108,12 @@ class PGVectorDB:
                 ON document_chunks USING GIN (textsearch);
             """)
 
-            # 创建 HNSW 索引（向量检索）
+            # 创建 IVFFlat 索引（向量检索）- pgvector支持更高维度
+            # 注意：2048维超HNSW的2000维限制，使用IVFFlat
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_chunk_vectors_hnsw
-                ON chunk_vectors USING hnsw (embedding vector_cosine_ops);
+                CREATE INDEX IF NOT EXISTS idx_chunk_vectors_ivfflat
+                ON chunk_vectors USING ivfflat (embedding vector_cosine_ops)
+                WITH (lists = 100);
             """)
 
     def insert_chunk(self, chunk_id: str, text: str, length: int, embedding: List[float], metadata: dict = None):
@@ -142,11 +124,11 @@ class PGVectorDB:
 
             cursor.execute("""
                 INSERT INTO document_chunks (id, text, length, textsearch, metadata)
-                VALUES (%s, %s, %s, to_tsvector('simple', %s), %s)
+                VALUES (%s, %s, %s, plainto_tsquery('simple', %s), %s)
                 ON CONFLICT (id) DO UPDATE SET
                     text = EXCLUDED.text,
                     length = EXCLUDED.length,
-                    textsearch = to_tsvector('simple', EXCLUDED.text)
+                    textsearch = plainto_tsquery('simple', EXCLUDED.text)
             """, (chunk_id, text, length, tokenized_text, json.dumps(metadata or {})))
 
             # 插入向量
@@ -180,27 +162,31 @@ class PGVectorDB:
         """
         第二路召回：全文关键词检索
 
-        使用 PostgreSQL 内置的全文检索（TSVECTOR + TS_RANK）
+        使用 PostgreSQL ILIKE 进行简单的关键词匹配
         """
-        # 将用户查询转换为分词格式
-        tokenized_query = chinese_tokenize(query_text)
+        # 提取关键词（简单的中文字符串）
+        keywords = chinese_tokenize(query_text)
+        if not keywords or len(keywords) < 2:
+            return []
+
+        # 取前4个字符作为关键词
+        keywords = keywords[:4]
 
         with self.get_cursor() as cursor:
-            # 使用 TS_RANK_CD 进行相关性排序
-            # TS_RANK_CD 考虑了文档频率和词频
+            # 使用 ILIKE 进行模糊匹配
             cursor.execute("""
-                SELECT id, TS_RANK_CD(textsearch, to_tsquery('simple', %s)) AS rank
+                SELECT id, LENGTH(text) as match_len
                 FROM document_chunks
-                WHERE textsearch @@ to_tsquery('simple', %s)
-                ORDER BY rank DESC
+                WHERE text ILIKE %s
+                ORDER BY match_len ASC
                 LIMIT %s
-            """, (tokenized_query, tokenized_query, top_k))
+            """, (f'%{keywords}%', top_k))
 
             results = cursor.fetchall()
             if results:
-                max_rank = max(float(row[1]) for row in results) if results else 1
-                # 归一化到 0-1
-                return [(row[0], float(row[1]) / max_rank if max_rank > 0 else 0) for row in results]
+                # 归一化分数
+                max_len = max(float(row[1]) for row in results) if results else 1
+                return [(row[0], 1.0 - float(row[1]) / max_len) for row in results]
             return []
 
     def hybrid_search(

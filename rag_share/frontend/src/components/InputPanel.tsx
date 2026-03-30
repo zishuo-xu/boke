@@ -103,42 +103,21 @@ export default function InputPanel({
 
       {/* PostgreSQL 模式选择 */}
       <div className={`border-t pt-4 ${isDark ? 'border-dark-700' : 'border-gray-200'}`}>
-        <h3 className={`text-sm font-semibold mb-3 ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>存储与检索模式</h3>
-        <div className="space-y-2">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={inputData.use_pg}
-              onChange={(e) => setInputData({ ...inputData, use_pg: e.target.checked })}
-              className="w-4 h-4 rounded border-dark-600 bg-dark-900 text-blue-600 focus:ring-blue-500"
-            />
-            <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
-              使用 PostgreSQL + pgvector
-            </span>
-          </label>
-
-          {inputData.use_pg && (
-            <label className="flex items-center gap-2 cursor-pointer ml-6">
-              <input
-                type="checkbox"
-                checked={inputData.use_hybrid_search}
-                onChange={(e) => setInputData({ ...inputData, use_hybrid_search: e.target.checked })}
-                className="w-4 h-4 rounded border-dark-600 bg-dark-900 text-blue-600 focus:ring-blue-500"
-              />
-              <span className={`text-sm ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-                启用混合检索（向量 + BM25）
-              </span>
-            </label>
-          )}
-        </div>
-
-        {/* 当前模式提示 */}
-        <div className={`mt-2 text-xs ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={inputData.use_pg}
+            onChange={(e) => setInputData({ ...inputData, use_pg: e.target.checked })}
+            className="w-4 h-4 rounded border-dark-600 bg-dark-900 text-blue-600 focus:ring-blue-500"
+          />
+          <span className={`text-sm ${isDark ? 'text-gray-300' : 'text-gray-700'}`}>
+            使用 PostgreSQL 混合检索
+          </span>
+        </label>
+        <div className={`mt-1 text-xs ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>
           {inputData.use_pg
-            ? inputData.use_hybrid_search
-              ? '模式：PostgreSQL 混合检索'
-              : '模式：PostgreSQL 纯向量检索'
-            : '模式：内存模式'}
+            ? '模式：向量检索 + 关键词检索 + RRF 融合'
+            : '模式：内存向量检索'}
         </div>
       </div>
 
@@ -238,7 +217,7 @@ SDK集成提供客户端开发包，支持iOS、Android、小程序等平台的�
           use_rerank: true,
           chunking_strategy: 'by_chars',
           use_pg: false,
-          use_hybrid_search: false
+          use_pg: false
         })}
         className={`text-sm ${isDark ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-700'} underline`}
       >

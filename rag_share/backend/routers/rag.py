@@ -20,8 +20,7 @@ class ProcessRequest(BaseModel):
     top_k: int = 3
     use_rerank: bool = True
     chunking_strategy: str = "by_chars"  # "by_chars" | "by_sentence" | "by_paragraph"
-    use_pg: bool = False  # 是否使用 PostgreSQL 存储和检索
-    use_hybrid_search: bool = False  # 是否使用混合检索（仅 use_pg=True 时有效）
+    use_pg: bool = False  # 是否使用 PostgreSQL 混合检索（向量 + 关键词 + RRF）
 
 
 class Chunk(BaseModel):
@@ -542,15 +541,13 @@ async def process_rag(request: ProcessRequest):
                 for chunk, vec in zip(chunks, vectors):
                     db.insert_chunk(chunk.id, chunk.text, chunk.length, vec)
 
-                # 根据模式选择检索方式
                 chunk_map = {c.id: c for c in chunks}
 
-                if request.use_hybrid_search:
-                    # 混合检索：向量检索 + 全文检索 + RRF 融合
+                if request.use_pg:
+                    # PostgreSQL 混合检索：向量检索 + 全文检索 + RRF 融合
                     search_data = db.hybrid_search(query_vector, request.query, request.top_k)
                     search_mode = "hybrid"
 
-                    # 构建包含向量分数和全文检索分数的结果
                     vector_dict = {v[0]: v[1] for v in search_data["vector_results"]}
                     ft_dict = {f[0]: f[1] for f in search_data["fulltext_results"]}
 
@@ -566,7 +563,7 @@ async def process_rag(request: ProcessRequest):
 
                     top_chunks = [chunk_map[cr.chunk_id] for cr in retrieval_results]
                 else:
-                    # 纯向量检索
+                    # 内存纯向量检索
                     search_results = db.vector_search(query_vector, request.top_k)
                     search_mode = "vector"
 
