@@ -2,34 +2,67 @@
 PostgreSQL + pgvector 数据库模块
 
 支持向量存储、相似度检索和混合检索
+- 第一路召回：向量语义检索（pgvector HNSW 索引）
+- 第二路召回：全文关键词检索（PostgreSQL 全文检索）
+- 结果融合：RRF 算法
 """
 
 import os
 import json
-import hashlib
+import re
 from typing import List, Optional, Tuple
 from contextlib import contextmanager
 
 import psycopg2
-from psycopg2.extras import execute_values
 
 
 # PostgreSQL 配置
 PG_CONFIG = {
     "host": os.getenv("PG_HOST", "47.107.187.18"),
     "port": int(os.getenv("PG_PORT", "5432")),
-    "database": os.getenv("PG_DATABASE", "postgres"),
-    "user": os.getenv("PG_USER", "root"),
-    "password": os.getenv("PG_PASSWORD", "Y/_c3t#&#n5a4!G"),
+    "database": os.getenv("PG_DATABASE", "rag"),
+    "user": os.getenv("PG_USER", "rag_user"),
+    "password": os.getenv("PG_PASSWORD", "bf9d9e1378856c6ec073dba065fc0d75"),
 }
 
 
+def chinese_tokenize(text: str) -> str:
+    """
+    中文分词：将连续的中文字符串切分成 2-gram
+    PostgreSQL 全文检索需要分词，我们用 2-gram 模拟中文分词
+    """
+    # 移除非文字内容
+    text = re.sub(r'[^\w\u4e00-\u9fff]', ' ', text)
+    # 移除多余空格
+    text = ' '.join(text.split())
+
+    # 对中文进行 2-gram 切分
+    tokens = []
+    i = 0
+    while i < len(text):
+        # 如果是中文连续字符
+        if '\u4e00' <= text[i] <= '\u9fff':
+            # 中文 2-gram
+            if i + 1 < len(text) and '\u4e00' <= text[i + 1] <= '\u9fff':
+                tokens.append(text[i:i + 2])
+                i += 2
+            else:
+                i += 1
+        else:
+            # 英文/数字按空格切分
+            tokens.append(text[i])
+            i += 1
+
+    # 转换为 PostgreSQL 全文检索查询格式
+    return ' '.join(tokens) if tokens else text
+
+
 class PGVectorDB:
-    """PostgreSQL pgvector 操作类"""
+    """PostgreSQL pgvector + 全文检索操作类"""
 
     def __init__(self):
         self._conn = None
-        self._ensure_vector_extension()
+        self._ensure_extensions()
         self._ensure_table()
 
     def _get_conn(self):
@@ -56,8 +89,8 @@ class PGVectorDB:
         finally:
             cursor.close()
 
-    def _ensure_vector_extension(self):
-        """确保 pgvector 扩展已安装"""
+    def _ensure_extensions(self):
+        """确保扩展已安装"""
         try:
             with self.get_cursor() as cursor:
                 cursor.execute("CREATE EXTENSION IF NOT EXISTS vector;")
@@ -68,15 +101,19 @@ class PGVectorDB:
     def _ensure_table(self):
         """创建向量存储表"""
         with self.get_cursor() as cursor:
+            # document_chunks 表：存储文档片段
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS document_chunks (
                     id VARCHAR(100) PRIMARY KEY,
                     text TEXT NOT NULL,
                     length INTEGER NOT NULL,
+                    textsearch TSVECTOR,
                     metadata JSONB DEFAULT '{}',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+
+            # chunk_vectors 表：存储向量
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS chunk_vectors (
                     chunk_id VARCHAR(100) PRIMARY KEY,
@@ -84,23 +121,35 @@ class PGVectorDB:
                     FOREIGN KEY (chunk_id) REFERENCES document_chunks(id) ON DELETE CASCADE
                 );
             """)
-            # 创建 HNSW 索引（如果不存在）
+
+            # 创建 GIN 索引（全文检索）
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_document_chunks_textsearch
+                ON document_chunks USING GIN (textsearch);
+            """)
+
+            # 创建 HNSW 索引（向量检索）
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_chunk_vectors_hnsw
                 ON chunk_vectors USING hnsw (embedding vector_cosine_ops);
             """)
 
     def insert_chunk(self, chunk_id: str, text: str, length: int, embedding: List[float], metadata: dict = None):
-        """插入 chunk 和对应的向量"""
+        """插入 chunk 和对应的向量、全文检索向量"""
         with self.get_cursor() as cursor:
-            # 插入文档
-            cursor.execute("""
-                INSERT INTO document_chunks (id, text, length, metadata)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (id) DO UPDATE SET text = EXCLUDED.text, length = EXCLUDED.length
-            """, (chunk_id, text, length, json.dumps(metadata or {})))
+            # 生成分词后的查询向量
+            tokenized_text = chinese_tokenize(text)
 
-            # 插入向量（转换为 PostgreSQL VECTOR 格式）
+            cursor.execute("""
+                INSERT INTO document_chunks (id, text, length, textsearch, metadata)
+                VALUES (%s, %s, %s, to_tsvector('simple', %s), %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    text = EXCLUDED.text,
+                    length = EXCLUDED.length,
+                    textsearch = to_tsvector('simple', EXCLUDED.text)
+            """, (chunk_id, text, length, tokenized_text, json.dumps(metadata or {})))
+
+            # 插入向量
             vec_str = "[" + ",".join(str(x) for x in embedding) + "]"
             cursor.execute("""
                 INSERT INTO chunk_vectors (chunk_id, embedding)
@@ -110,9 +159,9 @@ class PGVectorDB:
 
     def vector_search(self, query_embedding: List[float], top_k: int = 5) -> List[Tuple[str, float]]:
         """
-        纯向量检索：使用余弦相似度搜索最相似的 chunks
+        第一路召回：向量语义检索
 
-        返回: [(chunk_id, similarity_score), ...]
+        使用 pgvector 的 HNSW 索引进行近似最近邻搜索
         """
         vec_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
 
@@ -127,6 +176,33 @@ class PGVectorDB:
 
             return [(row[0], float(row[1])) for row in cursor.fetchall()]
 
+    def fulltext_search(self, query_text: str, top_k: int = 5) -> List[Tuple[str, float]]:
+        """
+        第二路召回：全文关键词检索
+
+        使用 PostgreSQL 内置的全文检索（TSVECTOR + TS_RANK）
+        """
+        # 将用户查询转换为分词格式
+        tokenized_query = chinese_tokenize(query_text)
+
+        with self.get_cursor() as cursor:
+            # 使用 TS_RANK_CD 进行相关性排序
+            # TS_RANK_CD 考虑了文档频率和词频
+            cursor.execute("""
+                SELECT id, TS_RANK_CD(textsearch, to_tsquery('simple', %s)) AS rank
+                FROM document_chunks
+                WHERE textsearch @@ to_tsquery('simple', %s)
+                ORDER BY rank DESC
+                LIMIT %s
+            """, (tokenized_query, tokenized_query, top_k))
+
+            results = cursor.fetchall()
+            if results:
+                max_rank = max(float(row[1]) for row in results) if results else 1
+                # 归一化到 0-1
+                return [(row[0], float(row[1]) / max_rank if max_rank > 0 else 0) for row in results]
+            return []
+
     def hybrid_search(
         self,
         query_embedding: List[float],
@@ -135,107 +211,61 @@ class PGVectorDB:
         vector_weight: float = 0.6
     ) -> dict:
         """
-        混合检索：结合向量相似度和 BM25 关键词匹配
+        混合检索：向量检索 + 全文检索 + RRF 融合
 
         参数:
-            query_embedding: 查询的向量
-            query_text: 查询文本（用于 BM25）
+            query_embedding: 查询的向量（用于向量检索）
+            query_text: 查询文本（用于全文检索）
             top_k: 返回数量
-            vector_weight: 向量检索权重 (0-1)，BM25 权重为 1-vector_weight
+            vector_weight: 向量检索权重
 
         返回: {
             "fused_results": [(chunk_id, fused_score), ...],
             "vector_results": [(chunk_id, vector_score), ...],
-            "bm25_results": [(chunk_id, bm25_score), ...]
+            "fulltext_results": [(chunk_id, ft_score), ...]
         }
         """
-        vec_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        # 第一路：向量语义检索
+        vector_results = self.vector_search(query_embedding, top_k * 3)
 
-        with self.get_cursor() as cursor:
-            # 向量检索结果
-            cursor.execute("""
-                SELECT v.chunk_id, 1 - (v.embedding <=> %s::vector) AS vec_sim
-                FROM chunk_vectors v
-                ORDER BY v.embedding <=> %s::vector
-                LIMIT %s
-            """, (vec_str, vec_str, top_k * 3))
+        # 第二路：全文关键词检索
+        fulltext_results = self.fulltext_search(query_text, top_k * 3)
 
-            vector_results = [(row[0], float(row[1])) for row in cursor.fetchall()]
+        if not vector_results and not fulltext_results:
+            return {"fused_results": [], "vector_results": [], "fulltext_results": []}
 
-            if not vector_results:
-                return {"fused_results": [], "vector_results": [], "bm25_results": []}
+        # 构建排名字典（用于 RRF）
+        def rrf_rank(results: List[Tuple[str, float]], k: int = 60) -> dict:
+            """RRF 排名：1 / (k + rank)"""
+            ranks = {}
+            for rank, (chunk_id, _) in enumerate(results):
+                ranks[chunk_id] = 1.0 / (k + rank + 1)
+            return ranks
 
-            # 获取对应文档用于 BM25 计算
-            chunk_ids = [v[0] for v in vector_results]
-            placeholders = ','.join(['%s'] * len(chunk_ids))
-            cursor.execute(f"""
-                SELECT id, text FROM document_chunks WHERE id IN ({placeholders})
-            """, chunk_ids)
+        vector_ranks = rrf_rank(vector_results)
+        fulltext_ranks = rrf_rank(fulltext_results)
 
-            docs = {row[0]: row[1] for row in cursor.fetchall()}
+        # 获取所有相关 chunk_id
+        all_chunk_ids = set(vector_ranks.keys()) | set(fulltext_ranks.keys())
 
-            # 简单的 BM25 实现
-            def simple_tokenize(text: str) -> List[str]:
-                import re
-                text = re.sub(r'[^\w\u4e00-\u9fff]', '', text)
-                return [text[i:i+2] for i in range(len(text) - 1)]
+        # RRF 融合
+        fused_scores = []
+        for chunk_id in all_chunk_ids:
+            vec_rank_score = vector_ranks.get(chunk_id, 0)
+            ft_rank_score = fulltext_ranks.get(chunk_id, 0)
 
-            query_tokens = simple_tokenize(query_text)
+            # 按权重融合排名分数
+            fused = vector_weight * vec_rank_score + (1 - vector_weight) * ft_rank_score
+            fused_scores.append((chunk_id, fused))
 
-            # 构建向量结果字典
-            vector_dict = {row[0]: row[1] for row in vector_results}
+        # 按融合分数排序
+        fused_scores.sort(key=lambda x: x[1], reverse=True)
 
-            if not query_tokens:
-                # 无法分词时返回纯向量结果
-                return {
-                    "fused_results": vector_results[:top_k],
-                    "vector_results": vector_results,
-                    "bm25_results": []
-                }
-
-            # 计算 BM25 分数
-            avg_doc_len = sum(len(d) for d in docs.values()) / max(len(docs), 1)
-            k1, b = 1.5, 0.75
-
-            bm25_results = []
-            for chunk_id in vector_dict.keys():
-                text = docs.get(chunk_id, "")
-                doc_tokens = simple_tokenize(text)
-                doc_tf = {}
-                for token in doc_tokens:
-                    doc_tf[token] = doc_tf.get(token, 0) + 1
-
-                score = 0.0
-                for token in query_tokens:
-                    if token not in doc_tf:
-                        continue
-                    tf = doc_tf[token]
-                    idf = 1.0  # 简化 IDF
-                    score += idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (len(text) / avg_doc_len)))
-                bm25_results.append((chunk_id, score))
-
-            # 归一化分数
-            max_vec = max(vector_dict.values()) if vector_dict else 1
-            max_bm25 = max(s[1] for s in bm25_results) if bm25_results else 1
-
-            # RRF 融合
-            fused_results = []
-            for chunk_id in vector_dict.keys():
-                vec_score = vector_dict[chunk_id]
-                bm25_score = next((s[1] for s in bm25_results if s[0] == chunk_id), 0)
-                norm_vec = vec_score / max_vec if max_vec > 0 else 0
-                norm_bm25 = bm25_score / max_bm25 if max_bm25 > 0 else 0
-                fused_score = vector_weight * norm_vec + (1 - vector_weight) * norm_bm25
-                fused_results.append((chunk_id, fused_score))
-
-            # 返回 Top-K
-            fused_results.sort(key=lambda x: x[1], reverse=True)
-
-            return {
-                "fused_results": fused_results[:top_k],
-                "vector_results": vector_results,
-                "bm25_results": sorted(bm25_results, key=lambda x: x[1], reverse=True)
-            }
+        return {
+            "fused_results": fused_scores[:top_k],
+            "vector_results": vector_results,
+            "fulltext_results": fulltext_results
+        }
 
     def get_chunks_by_ids(self, chunk_ids: List[str]) -> List[dict]:
         """根据 ID 列表获取 chunks"""

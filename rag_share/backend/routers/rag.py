@@ -34,7 +34,7 @@ class RetrievalResult(BaseModel):
     chunk_id: str
     similarity: float
     vector_score: Optional[float] = None
-    bm25_score: Optional[float] = None
+    fulltext_score: Optional[float] = None
 
 
 class RerankedResult(BaseModel):
@@ -546,13 +546,13 @@ async def process_rag(request: ProcessRequest):
                 chunk_map = {c.id: c for c in chunks}
 
                 if request.use_hybrid_search:
-                    # 混合检索
+                    # 混合检索：向量检索 + 全文检索 + RRF 融合
                     search_data = db.hybrid_search(query_vector, request.query, request.top_k)
                     search_mode = "hybrid"
 
-                    # 构建包含向量分数和 BM25 分数的结果
+                    # 构建包含向量分数和全文检索分数的结果
                     vector_dict = {v[0]: v[1] for v in search_data["vector_results"]}
-                    bm25_dict = {b[0]: b[1] for b in search_data["bm25_results"]}
+                    ft_dict = {f[0]: f[1] for f in search_data["fulltext_results"]}
 
                     retrieval_results = []
                     for chunk_id, fused_score in search_data["fused_results"]:
@@ -561,7 +561,7 @@ async def process_rag(request: ProcessRequest):
                                 chunk_id=chunk_id,
                                 similarity=fused_score,
                                 vector_score=vector_dict.get(chunk_id),
-                                bm25_score=bm25_dict.get(chunk_id)
+                                fulltext_score=ft_dict.get(chunk_id)
                             ))
 
                     top_chunks = [chunk_map[cr.chunk_id] for cr in retrieval_results]
