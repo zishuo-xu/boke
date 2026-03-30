@@ -123,7 +123,7 @@ export default function StepRetrieval({
             onClick={() => { setShowVectorOnly(false); setShowFulltextOnly(false); }}
             className={`px-3 py-1 text-xs rounded ${!showVectorOnly && !showFulltextOnly ? 'bg-purple-600 text-white' : isDark ? 'bg-dark-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}
           >
-            RRF 融合结果
+            加权融合结果
           </button>
         </div>
       )}
@@ -133,150 +133,152 @@ export default function StepRetrieval({
         <div className={`text-xs mb-3 p-2 rounded ${isDark ? 'bg-dark-800 text-gray-400' : 'bg-gray-100 text-gray-600'}`}>
           {displayMode === 'vector' && '【第一路召回】向量语义检索：基于 HNSW 索引，匹配"智能客服"、"APP"等语义概念'}
           {displayMode === 'fulltext' && '【第二路召回】全文关键词检索：基于 PostgreSQL TS_RANK，精确匹配"集成"、"APP"等关键词'}
-          {displayMode === 'fused' && '【结果融合】RRF 算法：结合向量排名和全文排名，向量权重 60%，全文权重 40%'}
+          {displayMode === 'fused' && '【结果融合】加权分数融合：融合分 = 0.6×向量分 + 0.4×全文分'}
         </div>
       )}
 
-      {/* 结果列表 */}
+      {/* 结果列表 - 按分数排序显示 */}
       <div className="space-y-3">
-        {chunks.map((chunk, index) => {
-          const result = retrievalResults.find(r => r.chunk_id === chunk.id)
-          const isTopK = result !== undefined
-          const rank = retrievalResults.findIndex(r => r.chunk_id === chunk.id) + 1
+        {(() => {
+          // 按当前显示模式的分数排序
+          const sortedResults = [...retrievalResults].sort((a, b) => {
+            let scoreA = a.similarity
+            let scoreB = b.similarity
+            if (displayMode === 'vector') {
+              scoreA = a.vector_score ?? 0
+              scoreB = b.vector_score ?? 0
+            } else if (displayMode === 'fulltext') {
+              scoreA = a.fulltext_score ?? 0
+              scoreB = b.fulltext_score ?? 0
+            }
+            return scoreB - scoreA // 降序排列
+          })
 
-          // 根据显示模式确定分数
-          let displayScore = result?.similarity ?? 0
-          if (displayMode === 'vector') {
-            displayScore = result?.vector_score ?? 0
-          } else if (displayMode === 'fulltext') {
-            displayScore = result?.fulltext_score ?? 0
-          }
+          return sortedResults.map((result, index) => {
+            const chunk = chunks.find(c => c.id === result.chunk_id)
+            if (!chunk) return null
 
-          return (
-            <motion.div
-              key={chunk.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{
-                opacity: isTopK ? 1 : 0.5,
-                x: 0,
-                backgroundColor: isTopK
-                  ? (isDark ? `rgba(59, 130, 246, 0.08)` : `rgba(59, 130, 246, 0.05)`)
-                  : (isDark ? 'rgba(30, 30, 30, 0.5)' : 'rgba(249, 250, 251, 0.5)')
-              }}
-              transition={{ duration: 0.3, delay: index * 0.1 }}
-              className={`
-                rounded-lg p-4 border transition-all
-                ${isTopK
-                  ? isDark ? 'border-blue-500/30' : 'border-blue-300'
-                  : isDark
-                    ? 'border-dark-700'
-                    : 'border-gray-200'
-                }
-              `}
-            >
-              <div className="flex items-center justify-between mb-2">
-                <div className="flex items-center gap-2">
-                  {isTopK && (
+            let displayScore = result.similarity
+            if (displayMode === 'vector') {
+              displayScore = result.vector_score ?? 0
+            } else if (displayMode === 'fulltext') {
+              displayScore = result.fulltext_score ?? 0
+            }
+
+            return (
+              <motion.div
+                key={chunk.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.3, delay: index * 0.1 }}
+                className={`rounded-lg p-4 border transition-all ${isDark ? 'border-blue-500/30 bg-blue-500/5' : 'border-blue-300 bg-blue-50/50'}`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
                     <motion.span
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: index * 0.1 + 0.2, type: "spring" }}
-                      className={`w-6 h-6 text-xs rounded-full flex items-center justify-center font-bold ${
-                        isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'
-                      }`}
+                      className={`w-6 h-6 text-xs rounded-full flex items-center justify-center font-bold ${isDark ? 'bg-blue-600 text-white' : 'bg-blue-500 text-white'}`}
                     >
-                      {rank}
+                      {index + 1}
                     </motion.span>
-                  )}
-                  <span className={`text-xs font-mono ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>{chunk.id}</span>
+                    <span className={`text-xs font-mono ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>{chunk.id}</span>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
+                      {displayMode === 'vector' ? '向量' : displayMode === 'fulltext' ? '全文' : '融合'}
+                    </span>
+                    <motion.span
+                      initial={{ scale: 0.5, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ delay: index * 0.1 + 0.3, type: "spring" }}
+                      className={`text-sm font-bold ${colors.text}`}
+                    >
+                      {displayScore.toFixed(3)}
+                    </motion.span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-4">
-                  {result && (
-                    <>
-                      <span className={`text-xs ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
-                        {displayMode === 'vector' ? '向量' : displayMode === 'fulltext' ? '全文' : '融合'}
-                      </span>
-                      <motion.span
-                        initial={{ scale: 0.5, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ delay: index * 0.1 + 0.3, type: "spring" }}
-                        className={`text-sm font-bold ${colors.text}`}
-                      >
-                        {displayScore.toFixed(3)}
-                      </motion.span>
-                    </>
-                  )}
-                  {!isTopK && (
-                    <span className={`text-xs ${isDark ? 'text-dark-600' : 'text-gray-400'}`}>未命中</span>
-                  )}
-                </div>
-              </div>
-              <p className={`text-sm line-clamp-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{chunk.text}</p>
+                <p className={`text-sm line-clamp-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{chunk.text}</p>
 
-              {/* 分数条形指示器 */}
-              {result && (
-                <div className="mt-2 space-y-1">
-                  {isHybrid && (
-                    <>
-                      {/* 向量分数条 */}
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="w-10 text-blue-400">向量</span>
-                        <div className="flex-1 h-1 rounded-full overflow-hidden bg-dark-700">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(result.vector_score ?? 0) * 100}%` }}
-                            transition={{ duration: 0.5, delay: index * 0.1 + 0.4, ease: "easeOut" }}
-                            className="h-full rounded-full bg-blue-500"
-                          />
-                        </div>
-                        <span className="w-12 text-right text-blue-400">{(result.vector_score ?? 0).toFixed(3)}</span>
+                {/* 分数条形指示器 */}
+                {isHybrid && (
+                  <div className="mt-2 space-y-1">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="w-10 text-blue-400">向量</span>
+                      <div className="flex-1 h-1 rounded-full overflow-hidden bg-dark-700">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(result.vector_score ?? 0) * 100}%` }}
+                          transition={{ duration: 0.5, delay: index * 0.1 + 0.4, ease: "easeOut" }}
+                          className="h-full rounded-full bg-blue-500"
+                        />
                       </div>
-                      {/* 全文分数条 */}
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="w-10 text-green-400">全文</span>
-                        <div className="flex-1 h-1 rounded-full overflow-hidden bg-dark-700">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${(result.fulltext_score ?? 0) * 100}%` }}
-                            transition={{ duration: 0.5, delay: index * 0.1 + 0.5, ease: "easeOut" }}
-                            className="h-full rounded-full bg-green-500"
-                          />
-                        </div>
-                        <span className="w-12 text-right text-green-400">{(result.fulltext_score ?? 0).toFixed(3)}</span>
-                      </div>
-                      {/* 融合分数条 */}
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="w-10 text-purple-400">融合</span>
-                        <div className="flex-1 h-1 rounded-full overflow-hidden bg-dark-700">
-                          <motion.div
-                            initial={{ width: 0 }}
-                            animate={{ width: `${result.similarity * 100}%` }}
-                            transition={{ duration: 0.5, delay: index * 0.1 + 0.6, ease: "easeOut" }}
-                            className="h-full rounded-full bg-purple-500"
-                          />
-                        </div>
-                        <span className="w-12 text-right text-purple-400">{result.similarity.toFixed(3)}</span>
-                      </div>
-                    </>
-                  )}
-                  {!isHybrid && (
-                    <div className="h-1 rounded-full overflow-hidden bg-dark-700">
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{ width: `${displayScore * 100}%` }}
-                        transition={{ duration: 0.5, delay: index * 0.1 + 0.4, ease: "easeOut" }}
-                        className={`h-full rounded-full ${
-                          displayScore > 0.7 ? 'bg-green-500' :
-                          displayScore > 0.4 ? 'bg-yellow-500' : 'bg-gray-500'
-                        }`}
-                      />
+                      <span className="w-12 text-right text-blue-400">{(result.vector_score ?? 0).toFixed(3)}</span>
                     </div>
-                  )}
-                </div>
-              )}
-            </motion.div>
-          )
-        })}
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="w-10 text-green-400">全文</span>
+                      <div className="flex-1 h-1 rounded-full overflow-hidden bg-dark-700">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(result.fulltext_score ?? 0) * 100}%` }}
+                          transition={{ duration: 0.5, delay: index * 0.1 + 0.5, ease: "easeOut" }}
+                          className="h-full rounded-full bg-green-500"
+                        />
+                      </div>
+                      <span className="w-12 text-right text-green-400">{(result.fulltext_score ?? 0).toFixed(3)}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="w-10 text-purple-400">融合</span>
+                      <div className="flex-1 h-1 rounded-full overflow-hidden bg-dark-700">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${result.similarity * 100}%` }}
+                          transition={{ duration: 0.5, delay: index * 0.1 + 0.6, ease: "easeOut" }}
+                          className="h-full rounded-full bg-purple-500"
+                        />
+                      </div>
+                      <span className="w-12 text-right text-purple-400">{result.similarity.toFixed(3)}</span>
+                    </div>
+                  </div>
+                )}
+                {!isHybrid && (
+                  <div className="mt-2 h-1 rounded-full overflow-hidden bg-dark-700">
+                    <motion.div
+                      initial={{ width: 0 }}
+                      animate={{ width: `${displayScore * 100}%` }}
+                      transition={{ duration: 0.5, delay: index * 0.1 + 0.4, ease: "easeOut" }}
+                      className={`h-full rounded-full ${
+                        displayScore > 0.7 ? 'bg-green-500' :
+                        displayScore > 0.4 ? 'bg-yellow-500' : 'bg-gray-500'
+                      }`}
+                    />
+                  </div>
+                )}
+              </motion.div>
+            )
+          })
+        })()}
+
+        {/* 未命中的 chunks */}
+        {chunks.filter(c => !retrievalResults.find(r => r.chunk_id === c.id)).map((chunk, index) => (
+          <motion.div
+            key={chunk.id}
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 0.5, x: 0 }}
+            transition={{ duration: 0.3, delay: (retrievalResults.length + index) * 0.05 }}
+            className={`rounded-lg p-4 border ${isDark ? 'border-dark-700 bg-dark-800/50' : 'border-gray-200 bg-gray-50/50'}`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className={`w-6 h-6 text-xs rounded-full flex items-center justify-center font-bold ${isDark ? 'bg-dark-600 text-dark-400' : 'bg-gray-200 text-gray-400'}`}>-</span>
+                <span className={`text-xs font-mono ${isDark ? 'text-gray-500' : 'text-gray-500'}`}>{chunk.id}</span>
+              </div>
+              <span className={`text-xs ${isDark ? 'text-dark-600' : 'text-gray-400'}`}>未命中</span>
+            </div>
+            <p className={`text-sm line-clamp-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>{chunk.text}</p>
+          </motion.div>
+        ))}
       </div>
     </div>
   )

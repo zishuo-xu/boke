@@ -524,7 +524,7 @@ async def process_rag(request: ProcessRequest):
     # Step 5: Retrieval (similarity calculation)
     # 确定存储和检索模式
     storage_mode = "postgresql" if request.use_pg else "in_memory"
-    search_mode = "hybrid" if request.use_hybrid_search else "vector"
+    search_mode = "hybrid" if request.use_pg else "vector"
 
     retrieval_results = []
     reranked_results = None

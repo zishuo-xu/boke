@@ -116,7 +116,7 @@ export default function InputPanel({
         </label>
         <div className={`mt-1 text-xs ${isDark ? 'text-dark-500' : 'text-gray-400'}`}>
           {inputData.use_pg
-            ? '模式：向量检索 + 关键词检索 + RRF 融合'
+            ? '模式：向量检索 + 关键词检索 + 加权分数融合'
             : '模式：内存向量检索'}
         </div>
       </div>

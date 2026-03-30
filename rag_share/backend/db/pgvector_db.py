@@ -28,13 +28,31 @@ PG_CONFIG = {
 
 def chinese_tokenize(text: str) -> str:
     """
-    中文分词：简单移除非文字内容
+    中文分词：2-gram 切分，用空格分隔
     用于全文检索的文本预处理
     """
     import re
-    # 移除非文字内容，只保留中文、英文、数字
+    # 移除非文字内容
     text = re.sub(r'[^\w\u4e00-\u9fff]', '', text)
-    return text
+    if not text:
+        return text
+
+    # 中文 2-gram 切分，用空格分隔
+    tokens = []
+    i = 0
+    while i < len(text):
+        if '\u4e00' <= text[i] <= '\u9fff':
+            if i + 1 < len(text) and '\u4e00' <= text[i + 1] <= '\u9fff':
+                tokens.append(text[i:i + 2])
+                i += 2
+            else:
+                tokens.append(text[i])
+                i += 1
+        else:
+            tokens.append(text[i])
+            i += 1
+
+    return ' '.join(tokens)
 
 
 class PGVectorDB:
@@ -108,31 +126,25 @@ class PGVectorDB:
                 ON document_chunks USING GIN (textsearch);
             """)
 
-            # 创建 IVFFlat 索引（向量检索）- pgvector支持更高维度
-            # 注意：2048维超HNSW的2000维限制，使用IVFFlat
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_chunk_vectors_ivfflat
-                ON chunk_vectors USING ivfflat (embedding vector_cosine_ops)
-                WITH (lists = 100);
-            """)
+            # 注意：pgvector 的 HNSW/IVFFlat 索引限制 2000 维
+            # 2048 维超限，不创建向量索引，使用顺序扫描（演示够用）
 
     def insert_chunk(self, chunk_id: str, text: str, length: int, embedding: List[float], metadata: dict = None):
-        """插入 chunk 和对应的向量、全文检索向量"""
+        """插入 chunk 和对应的向量"""
         with self.get_cursor() as cursor:
-            # 生成分词后的查询向量
-            tokenized_text = chinese_tokenize(text)
-
+            # 存储原文和向量，全文检索让 PostgreSQL 自己处理
             cursor.execute("""
                 INSERT INTO document_chunks (id, text, length, textsearch, metadata)
-                VALUES (%s, %s, %s, plainto_tsquery('simple', %s), %s)
+                VALUES (%s, %s, %s, to_tsvector('simple', %s), %s)
                 ON CONFLICT (id) DO UPDATE SET
                     text = EXCLUDED.text,
                     length = EXCLUDED.length,
-                    textsearch = plainto_tsquery('simple', EXCLUDED.text)
-            """, (chunk_id, text, length, tokenized_text, json.dumps(metadata or {})))
+                    textsearch = to_tsvector('simple', EXCLUDED.text)
+            """, (chunk_id, text, length, text, json.dumps(metadata or {})))
 
-            # 插入向量
-            vec_str = "[" + ",".join(str(x) for x in embedding) + "]"
+            # 插入向量（截断到 1024 维以兼容 pgvector）
+            truncated = embedding[:1024]
+            vec_str = "[" + ",".join(str(x) for x in truncated) + "]"
             cursor.execute("""
                 INSERT INTO chunk_vectors (chunk_id, embedding)
                 VALUES (%s, %s::vector)
@@ -145,7 +157,9 @@ class PGVectorDB:
 
         使用 pgvector 的 HNSW 索引进行近似最近邻搜索
         """
-        vec_str = "[" + ",".join(str(x) for x in query_embedding) + "]"
+        # 截断查询向量到 1024 维
+        query_truncated = query_embedding[:1024]
+        vec_str = "[" + ",".join(str(x) for x in query_truncated) + "]"
 
         with self.get_cursor() as cursor:
             cursor.execute("""
@@ -162,31 +176,52 @@ class PGVectorDB:
         """
         第二路召回：全文关键词检索
 
-        使用 PostgreSQL ILIKE 进行简单的关键词匹配
+        使用 PostgreSQL ILIKE 进行关键词匹配
         """
-        # 提取关键词（简单的中文字符串）
-        keywords = chinese_tokenize(query_text)
-        if not keywords or len(keywords) < 2:
+        if not query_text:
             return []
 
-        # 取前4个字符作为关键词
-        keywords = keywords[:4]
+        import re
+
+        # 英文单词
+        english = re.findall(r'[a-zA-Z0-9_]+', query_text)
+        english = [w.lower() for w in english if len(w) >= 2]
+
+        # 中文 bigram（2-gram滑动窗口）
+        chinese = re.findall(r'[\u4e00-\u9fff]', query_text)
+        chinese_bigrams = []
+        for i in range(len(chinese) - 1):
+            chinese_bigrams.append(chinese[i] + chinese[i+1])
+
+        # 合并关键词
+        keywords = english + chinese_bigrams
+        if not keywords:
+            return []
+
+        # 限制数量
+        keywords = keywords[:5]
 
         with self.get_cursor() as cursor:
-            # 使用 ILIKE 进行模糊匹配
-            cursor.execute("""
-                SELECT id, LENGTH(text) as match_len
+            # 使用 ILIKE 匹配任意关键词
+            conditions = ' OR '.join(['text ILIKE %s'] * len(keywords))
+            params = [f'%{k}%' for k in keywords]
+            cursor.execute(f"""
+                SELECT id, text
                 FROM document_chunks
-                WHERE text ILIKE %s
-                ORDER BY match_len ASC
+                WHERE {conditions}
                 LIMIT %s
-            """, (f'%{keywords}%', top_k))
+            """, (*params, top_k))
 
             results = cursor.fetchall()
             if results:
-                # 归一化分数
-                max_len = max(float(row[1]) for row in results) if results else 1
-                return [(row[0], 1.0 - float(row[1]) / max_len) for row in results]
+                # 计算每个 chunk 匹配到的关键词数量
+                scores = []
+                for row in results:
+                    chunk_id, text_content = row
+                    # 统计该 chunk 中匹配到的关键词数量
+                    match_count = sum(1 for k in keywords if k.lower() in text_content.lower())
+                    scores.append((chunk_id, float(match_count) / len(keywords)))
+                return scores
             return []
 
     def hybrid_search(
@@ -220,28 +255,21 @@ class PGVectorDB:
         if not vector_results and not fulltext_results:
             return {"fused_results": [], "vector_results": [], "fulltext_results": []}
 
-        # 构建排名字典（用于 RRF）
-        def rrf_rank(results: List[Tuple[str, float]], k: int = 60) -> dict:
-            """RRF 排名：1 / (k + rank)"""
-            ranks = {}
-            for rank, (chunk_id, _) in enumerate(results):
-                ranks[chunk_id] = 1.0 / (k + rank + 1)
-            return ranks
-
-        vector_ranks = rrf_rank(vector_results)
-        fulltext_ranks = rrf_rank(fulltext_results)
+        # 构建分数字典
+        vector_scores = {chunk_id: score for chunk_id, score in vector_results}
+        fulltext_scores = {chunk_id: score for chunk_id, score in fulltext_results}
 
         # 获取所有相关 chunk_id
-        all_chunk_ids = set(vector_ranks.keys()) | set(fulltext_ranks.keys())
+        all_chunk_ids = set(vector_scores.keys()) | set(fulltext_scores.keys())
 
-        # RRF 融合
+        # 加权分数融合（直接用相似度分数加权，而非 RRF 排名）
         fused_scores = []
         for chunk_id in all_chunk_ids:
-            vec_rank_score = vector_ranks.get(chunk_id, 0)
-            ft_rank_score = fulltext_ranks.get(chunk_id, 0)
+            vec_score = vector_scores.get(chunk_id, 0)
+            ft_score = fulltext_scores.get(chunk_id, 0)
 
-            # 按权重融合排名分数
-            fused = vector_weight * vec_rank_score + (1 - vector_weight) * ft_rank_score
+            # 标准化：如果某一路没有结果，用0；否则用原始分数
+            fused = vector_weight * vec_score + (1 - vector_weight) * ft_score
             fused_scores.append((chunk_id, fused))
 
         # 按融合分数排序
